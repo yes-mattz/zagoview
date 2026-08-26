@@ -80,4 +80,52 @@ checar("so os presentes", instrumento.listar_recursos(validar=True),
 checar("sem validar, lista crua", instrumento.listar_recursos(validar=False),
        [VIVO, FANTASMA, OCUPADO])
 
+print("\n[4] o dialeto sai do fabricante declarado no *IDN?")
+for idn, esperado in [
+    ("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY55280502,07.30", "keysight"),
+    ("Agilent Technologies,DSO-X 2002A,MY123,02.40", "keysight"),
+    ("Rigol Technologies,DSA832E,DSA8G225200243,00.01.04.00.00", "rigol"),
+    ("RIGOL TECHNOLOGIES,DS1104Z,DS1ZA1,00.04.04", "rigol"),
+    ("Tektronix,TDS2024C,C000000,CF:91.1CT", "keysight"),   # cai no padrao
+]:
+    checar(f"{idn.split(',')[0][:22]:<22}", instrumento.familia(idn), esperado)
+
+print("\n[5] cada aparelho recebe o comando que entende")
+KEYSIGHT = FalsoScope("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY5528,07.30")
+RIGOL = FalsoScope("Rigol Technologies,DSA832E,DSA8G22,00.01.04")
+KEYSIGHT.binario = b"\x89PNG\r\n\x1a\n" + b"0" * 40
+RIGOL.binario = b"BM" + b"0" * 60
+
+
+def query_binary_values(self, cmd, **_k):
+    self.comandos.append(cmd)
+    return self.binario
+
+
+FalsoScope.query_binary_values = query_binary_values
+simular({"key": KEYSIGHT, "rig": RIGOL})
+
+dados = instrumento.capturar_bytes("key", "PNG", "COLor", inksaver=True)
+checar("comando Keysight", KEYSIGHT.comandos[-1], ":DISPlay:DATA? PNG,COLor")
+checar("INKSaver so na Keysight", ":HARDcopy:INKSaver ON" in KEYSIGHT.comandos, True)
+checar("assinatura reconhecida", instrumento.formato_dos_dados(dados), "PNG")
+
+dados = instrumento.capturar_bytes("rig", "PNG", "COLor", inksaver=True)
+checar("comando Rigol", RIGOL.comandos[-1], ":PRIV:SNAP? BMP")
+checar("pedir PNG a um Rigol nao manda INKSaver",
+       [c for c in RIGOL.comandos if "INKSaver" in c], [])
+checar("assinatura reconhecida", instrumento.formato_dos_dados(dados), "BMP")
+
+print("\n[6] a extensao segue o que o aparelho entregou, nao o que foi pedido")
+checar("BMP salvo como .png vira .bmp",
+       instrumento.ajustar_extensao(r"C:\medidas\tela.png", b"BM" + b"0" * 40),
+       r"C:\medidas\tela.bmp")
+checar("PNG pedido e PNG entregue: nao mexe",
+       instrumento.ajustar_extensao(r"C:\medidas\tela.png",
+                                    b"\x89PNG\r\n\x1a\n" + b"0" * 40),
+       r"C:\medidas\tela.png")
+checar("bytes irreconheciveis: nao inventa extensao",
+       instrumento.ajustar_extensao(r"C:\medidas\tela.png", b"???"),
+       r"C:\medidas\tela.png")
+
 print("\nTODOS OS TESTES PASSARAM")

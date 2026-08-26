@@ -16,6 +16,7 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 import traceback
@@ -83,6 +84,27 @@ def copiar_imagem(caminho):
         check=True, capture_output=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+
+
+def converter_para_png(origem):
+    """Converte uma imagem para PNG num arquivo temporario, e devolve o caminho.
+
+    O Tk so exibe PNG e GIF, e ha instrumento que so entrega BMP (o Rigol
+    DSA832E, por exemplo). Sem isto a captura salva certo mas fica sem previa.
+    """
+    destino = os.path.join(tempfile.gettempdir(), "zagoview_previa.png")
+    ps = (
+        "Add-Type -AssemblyName System.Drawing; "
+        "$i=[System.Drawing.Image]::FromFile('" + origem + "'); "
+        "$i.Save('" + destino + "', "
+        "[System.Drawing.Imaging.ImageFormat]::Png); $i.Dispose()"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps],
+        check=True, capture_output=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return destino
 
 
 def texto_do_erro(e):
@@ -412,6 +434,13 @@ class Aplicacao(ttk.Frame):
         self.bt_copiar.configure(state="normal")
         self.var_status.set("Salvo: " + caminho)
         self.log(f"Imagem salva ({tamanho / 1024:.0f} KB): {caminho}")
+        entregue = os.path.splitext(caminho)[1].lstrip(".").upper()
+        pedido = self.var_formato.get()
+        if entregue and entregue not in pedido.upper():
+            # Nem todo instrumento sabe entregar o formato escolhido; quem
+            # manda e o aparelho, e o nome do arquivo segue o que veio.
+            self.log(f"O instrumento so entrega {entregue}; o formato {pedido} "
+                     f"nao se aplica a ele.")
         self._mostrar_previa(caminho)
         self._atualizar_exemplo()
         if self.var_copiar.get():
@@ -421,7 +450,7 @@ class Aplicacao(ttk.Frame):
 
     def _mostrar_previa(self, caminho):
         try:
-            img = tk.PhotoImage(file=caminho)
+            img = self._carregar_previa(caminho)
             fator = max(1,
                         -(-img.width() // PREVIA_LARGURA),
                         -(-img.height() // PREVIA_ALTURA))
@@ -429,11 +458,19 @@ class Aplicacao(ttk.Frame):
                 img = img.subsample(fator)
             self.imagem_tk = img
             self.lb_previa.configure(image=img, text="")
-        except tk.TclError:
-            # Tk exibe PNG e GIF; BMP nao tem suporte nativo.
+        except Exception as e:
             self.imagem_tk = None
             self.lb_previa.configure(image="",
-                                     text="(previa disponivel apenas em PNG)")
+                                     text="(nao foi possivel exibir a previa)")
+            self.log(f"Previa indisponivel: {e}")
+
+    def _carregar_previa(self, caminho):
+        try:
+            return tk.PhotoImage(file=caminho)
+        except tk.TclError:
+            # Tk nao le BMP: converte uma copia so para mostrar na tela. O
+            # arquivo salvo continua sendo o que o instrumento mandou.
+            return tk.PhotoImage(file=converter_para_png(caminho))
 
     def abrir_imagem(self):
         if self.ultimo_arquivo and os.path.exists(self.ultimo_arquivo):

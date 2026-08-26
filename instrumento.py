@@ -37,6 +37,35 @@ RECURSO_PADRAO = ""
 FORMATOS = ["PNG", "BMP", "BMP8bit"]
 EXTENSAO = {"PNG": ".png", "BMP": ".bmp", "BMP8bit": ".bmp"}
 
+# Cada fabricante entrega a tela de um jeito. Os comandos abaixo foram
+# verificados contra os aparelhos, nao deduzidos do manual:
+#
+#   Keysight  :DISPlay:DATA? <formato>,<paleta>   PNG ou BMP, com INKSaver
+#   Rigol     :PRIV:SNAP? BMP                     so BMP, ~1,1 MB, ~4,4 s
+#
+# O comando do Rigol nao esta no manual de programacao da serie DSA800 - la
+# so existe :MMEMory:STORe:SCReen, que grava num pendrive espetado no
+# aparelho e nao manda nada pelo cabo. O :PRIV:SNAP? vem do lxi-tools
+# (plugins/screenshot_rigol-dsa.c) e responde certo no DSA832E.
+DIALETOS = {
+    "keysight": {
+        "formatos": ["PNG", "BMP", "BMP8bit"],
+        "inksaver": True,
+        "comando": lambda formato, paleta: f":DISPlay:DATA? {formato},{paleta}",
+    },
+    "rigol": {
+        "formatos": ["BMP"],
+        "inksaver": False,
+        "comando": lambda formato, paleta: ":PRIV:SNAP? BMP",
+    },
+}
+# Agilent e o nome antigo da Keysight, e os aparelhos falam o mesmo dialeto.
+FABRICANTES = {
+    "keysight": ("keysight", "agilent", "hewlett"),
+    "rigol": ("rigol",),
+}
+DIALETO_PADRAO = "keysight"
+
 PASTA_PADRAO = os.path.join(os.path.expanduser("~"), "Capturas_DSOX")
 
 # Erros que indicam sessao/enumeracao velha (cabo retirado, instrumento
@@ -200,15 +229,41 @@ def identificar(recurso, timeout=5000):
     return _com_retentativa(consulta)
 
 
+def familia(idn):
+    """Descobre o dialeto a partir do fabricante declarado no *IDN?."""
+    fabricante = idn.split(",")[0].strip().lower()
+    for chave, apelidos in FABRICANTES.items():
+        if any(a in fabricante for a in apelidos):
+            return chave
+    return DIALETO_PADRAO
+
+
+def formato_dos_dados(dados):
+    """Le a assinatura dos bytes. O que o aparelho mandou manda no nome."""
+    if dados[:4] == b"\x89PNG":
+        return "PNG"
+    if dados[:2] == b"BM":
+        return "BMP"
+    return None
+
+
 def capturar_bytes(recurso, formato="PNG", paleta="COLor", inksaver=False,
                    timeout=20000):
-    """Le a imagem da tela do osciloscopio e devolve os bytes brutos."""
+    """Le a imagem da tela do instrumento e devolve os bytes brutos.
+
+    O formato pedido e apenas uma preferencia: se o aparelho nao souber
+    produzi-lo, vale o primeiro que ele aceita.
+    """
     def leitura():
         with sessao(recurso, timeout) as scope:
-            # INKSaver ON inverte o fundo para branco (economia de tinta).
-            scope.write(f":HARDcopy:INKSaver {'ON' if inksaver else 'OFF'}")
+            dialeto = DIALETOS[familia(scope.query("*IDN?").strip())]
+            escolhido = (formato if formato in dialeto["formatos"]
+                         else dialeto["formatos"][0])
+            if dialeto["inksaver"]:
+                # INKSaver ON inverte o fundo para branco (economia de tinta).
+                scope.write(f":HARDcopy:INKSaver {'ON' if inksaver else 'OFF'}")
             return scope.query_binary_values(
-                f":DISPlay:DATA? {formato},{paleta}",
+                dialeto["comando"](escolhido, paleta),
                 datatype="B",
                 container=bytes,
             )
@@ -233,8 +288,22 @@ def nome_automatico(pasta=PASTA_PADRAO, prefixo="tela", formato="PNG"):
     return os.path.join(pasta, f"{prefixo}_{carimbo}{EXTENSAO.get(formato, '.png')}")
 
 
+def ajustar_extensao(arquivo, dados):
+    """Faz a extensao combinar com o que o aparelho realmente mandou.
+
+    Pedir PNG a um Rigol devolve BMP: salvar esses bytes num arquivo .png
+    daria um arquivo que nenhum visualizador abre.
+    """
+    real = formato_dos_dados(dados)
+    if real is None:
+        return arquivo
+    certa = EXTENSAO[real]
+    raiz, atual = os.path.splitext(arquivo)
+    return arquivo if atual.lower() == certa else raiz + certa
+
+
 def capturar(recurso, arquivo, formato="PNG", paleta="COLor", inksaver=False,
              timeout=20000):
     """Captura e salva em disco. Devolve (caminho, tamanho_em_bytes)."""
     dados = capturar_bytes(recurso, formato, paleta, inksaver, timeout)
-    return salvar(dados, arquivo), len(dados)
+    return salvar(dados, ajustar_extensao(arquivo, dados)), len(dados)

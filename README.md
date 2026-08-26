@@ -1,9 +1,9 @@
 # Zagoview — Captura de tela de instrumentos
 
 Captura a imagem da tela de um instrumento SCPI via VISA (USB ou rede) e salva
-em disco. Serve qualquer aparelho que o VISA enxergue e que atenda ao comando
-`:DISPlay:DATA?` — osciloscópios, geradores, analisadores. Foi escrito e testado
-contra um Keysight DSO-X 3024T, então os padrões seguem o dialeto da Keysight.
+em disco — osciloscópios, geradores, analisadores. Reconhece o fabricante pelo
+`*IDN?` e usa o comando que ele entende; veja **Instrumentos e dialetos**.
+Verificado contra um Keysight DSO-X 3024T e um Rigol DSA832E.
 
 ## Arquivos
 
@@ -95,9 +95,11 @@ Expert feito de dentro do programa, sem fechar a janela. As operações também
 tentam isso sozinhas, uma vez, quando recebem um erro típico de dispositivo
 removido (`RSRC_NFOUND`, `RSRC_BUSY`, `CONN_LOST`, `INV_OBJECT`, `IO`).
 
-Antes de cada operação é feito `viClear` + `*CLS`: se uma captura for abortada
-no meio, o resto da imagem fica na fila de saída do instrumento e a leitura
-seguinte sairia corrompida.
+Antes de cada operação a fila de saída é esvaziada: se uma captura for abortada
+no meio, o resto da imagem fica lá e a leitura seguinte sairia corrompida. Isso
+é feito lendo até esvaziar (200 ms por leitura, no máximo 20), e **não** com
+`viClear` — o viClear não respeita o timeout da sessão e, com um Rigol DSA832E
+recém-conectado, ficou 120,02 s bloqueado antes de falhar.
 
 Se mesmo assim não aparecer, o problema é físico. Confira com:
 
@@ -108,6 +110,32 @@ powershell "Get-PnpDevice | ? { $_.InstanceId -match 'VID_2A8D' } | fl Present, 
 `Present: False` significa que o Windows não enumerou o aparelho — cabo, porta
 ou a porta USB de dispositivo do instrumento, nada que o software resolva.
 
+## Instrumentos e dialetos
+
+Cada fabricante entrega a imagem da tela de um jeito. O núcleo lê o fabricante
+no `*IDN?` e escolhe o comando; o que não for reconhecido cai no dialeto
+Keysight.
+
+| Fabricante | Comando | Formatos | Observação |
+|---|---|---|---|
+| Keysight / Agilent | `:DISPlay:DATA? <formato>,<paleta>` | PNG, BMP, BMP8bit | aceita INKSaver e escala de cinza |
+| Rigol | `:PRIV:SNAP? BMP` | BMP | ~1,1 MB, ~4,4 s por captura |
+
+O formato escolhido na janela é uma **preferência**: se o aparelho não souber
+produzi-lo, vale o que ele entrega, e a extensão do arquivo é corrigida pela
+assinatura dos bytes — pedir PNG a um Rigol salva `.bmp`, não um `.png` que
+nenhum visualizador abriria. O registro avisa quando isso acontece.
+
+O comando do Rigol **não está no manual de programação da série DSA800**. Lá só
+existe `:MMEMory:STORe:SCReen`, que grava num pendrive espetado no aparelho e
+não manda nada pelo cabo; não há `:MMEM:DATA?` para ler o arquivo de volta, e
+`:DISPlay:DATA` não aparece nas 251 páginas. O `:PRIV:SNAP?` vem do
+[lxi-tools](https://github.com/lxi-tools/lxi-tools/blob/master/src/plugins/screenshot_rigol-dsa.c)
+e foi verificado contra um DSA832E.
+
+Para adicionar outro fabricante, basta uma entrada em `DIALETOS` e outra em
+`FABRICANTES`, em `instrumento.py`.
+
 ## O que conta como "conectado"
 
 A lista do combo mostra só os endereços que **responderam ao `*IDN?`** na
@@ -115,9 +143,9 @@ varredura — o VISA pode continuar anunciando um instrumento já desligado. Que
 falha por estar ocupado (`RSRC_BUSY`/`RSRC_LOCKED`) permanece na lista: está
 conectado, só não pode atender agora.
 
-A validação abre cada endereço sem `viClear`, de propósito — a varredura passa
-por todos os instrumentos do PC e limpar a E/S de um aparelho em uso por outro
-programa abortaria a transferência dele.
+A validação abre cada endereço sem esvaziar fila nenhuma, de propósito — a
+varredura passa por todos os instrumentos do PC, e mexer na E/S de um aparelho
+que outro programa está usando abortaria a transferência dele.
 
 O botão **CAPTURAR** (e o F5) só ficam ativos enquanto o endereço que está no
 campo for o mesmo que respondeu ao `*IDN?`. Editar o endereço, perder a conexão
@@ -140,6 +168,6 @@ percorrendo os estados de conexão em uma janela real.
 
 ## Observações
 
-- A prévia usa o Tk, que só exibe PNG. Em BMP a captura funciona normalmente,
-  mas a prévia mostra um aviso.
+- A prévia usa o Tk, que só exibe PNG. Em BMP a interface converte uma cópia
+  para exibir; o arquivo salvo continua sendo o que o instrumento mandou.
 - `--inksaver` inverte o fundo para branco (economia de tinta na impressão).
