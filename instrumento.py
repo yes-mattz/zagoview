@@ -42,12 +42,18 @@ PASTA_PADRAO = os.path.join(os.path.expanduser("~"), "Capturas_DSOX")
 # Erros que indicam sessao/enumeracao velha (cabo retirado, instrumento
 # reiniciado, sessao presa por uma transferencia abortada).
 ERROS_DE_SESSAO = {
+    constants.StatusCode.error_system_error,
     constants.StatusCode.error_resource_not_found,
     constants.StatusCode.error_resource_busy,
     constants.StatusCode.error_connection_lost,
     constants.StatusCode.error_invalid_object,
     constants.StatusCode.error_io,
 }
+
+# Tempo dado a cada leitura de descarte. Nao adianta ser generoso: quando nao
+# ha resto nenhum na fila, este e exatamente o tempo que se perde esperando.
+DESCARTE_MS = 200
+DESCARTE_MAX = 20        # teto de leituras, para nao girar sem fim
 
 _trava = threading.RLock()
 _gerenciador = None
@@ -99,11 +105,27 @@ def _limpar_buffers(scope):
     Se uma captura for abortada no meio (cabo retirado, timeout), a fila de
     saida do instrumento continua com o resto da imagem. Sem isso, a proxima
     leitura devolve os bytes velhos e a imagem sai corrompida.
+
+    Nao usa scope.clear() (viClear) de proposito. O viClear nao respeita o
+    timeout da sessao: com um Rigol DSA832E recem-conectado, ele ficou
+    120,02 s bloqueado antes de falhar com VI_ERROR_IO, o que aparecia como
+    a janela travada em "Consultando *IDN?". Ler ate esvaziar tem o mesmo
+    efeito e o prazo esta sob nosso controle.
     """
     with contextlib.suppress(Exception):
-        scope.clear()                 # viClear: limpa a E/S do USBTMC
-    with contextlib.suppress(Exception):
         scope.write("*CLS")           # limpa os registradores de status
+
+    antigo = getattr(scope, "timeout", None)
+    try:
+        scope.timeout = DESCARTE_MS
+        for _ in range(DESCARTE_MAX):
+            scope.read_raw()          # estoura o timeout quando a fila esvazia
+    except Exception:
+        pass                          # fila vazia: e o fim esperado
+    finally:
+        if antigo is not None:
+            with contextlib.suppress(Exception):
+                scope.timeout = antigo
 
 
 @contextlib.contextmanager
@@ -130,20 +152,29 @@ ERROS_DE_OCUPADO = {
 }
 
 
-def responde(recurso, timeout=2000):
+def responde(recurso, timeout=2000, tentativas=2):
     """Confirma que o endereco existe de fato, com um *IDN? curto.
 
-    Nao usa viClear aqui: a varredura passa por todos os instrumentos do PC e
-    limpar a E/S de um aparelho que outro programa esta usando abortaria a
+    Nao limpa nada aqui: a varredura passa por todos os instrumentos do PC, e
+    mexer na E/S de um aparelho que outro programa esta usando abortaria a
     transferencia dele.
+
+    Tenta duas vezes porque a primeira conversa com um instrumento recem
+    conectado pode falhar com VI_ERROR_SYSTEM_ERROR e funcionar em seguida -
+    uma unica tentativa apagaria da lista um aparelho que esta ali.
     """
-    try:
-        with sessao(recurso, timeout, limpar=False) as scope:
-            return bool(scope.query("*IDN?").strip())
-    except pyvisa.errors.VisaIOError as e:
-        return e.error_code in ERROS_DE_OCUPADO
-    except Exception:
-        return False
+    for restantes in range(tentativas - 1, -1, -1):
+        try:
+            with sessao(recurso, timeout, limpar=False) as scope:
+                return bool(scope.query("*IDN?").strip())
+        except pyvisa.errors.VisaIOError as e:
+            if e.error_code in ERROS_DE_OCUPADO:
+                return True
+            if not restantes:
+                return False
+        except Exception:
+            return False
+    return False
 
 
 def listar_recursos(reenumerar=False, validar=True):
