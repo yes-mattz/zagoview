@@ -10,11 +10,25 @@ import time
 import tkinter as tk
 import zlib
 
+import pyvisa
+from pyvisa import constants
+
 import gui_captura as G
 
 # evita caixas de dialogo modais no teste automatico
 G.messagebox.showerror = lambda *a, **k: print("DIALOGO ERRO:", a[0])
 G.messagebox.showwarning = lambda *a, **k: None
+
+
+def _sem_instrumento(*_a, **_k):
+    raise pyvisa.errors.VisaIOError(
+        int(constants.StatusCode.error_resource_not_found))
+
+
+# O resultado nao pode mudar conforme o osciloscopio esteja ligado ou nao:
+# o teste simula a ausencia de hardware e injeta as respostas ele mesmo.
+G.dsox_core.listar_recursos = lambda *a, **k: []
+G.dsox_core.identificar = _sem_instrumento
 
 
 def gerar_png(path, w=1280, h=768):
@@ -65,7 +79,7 @@ bombear()                # deixa a busca VISA inicial terminar
 print("\n[1] varredura sem nenhum instrumento presente")
 app._fim_procura(True, [])
 raiz.update()
-checar("endereco VISA fica vazio", app.var_recurso.get(), "")
+checar("endereco VISA sem dispositivo", app.var_recurso.get(), G.SEM_DISPOSITIVO)
 checar("rotulo", app.lb_idn["text"], "Nenhum instrumento conectado.")
 checar("lista do combo", app.cb_recurso["values"], "")
 checar("CAPTURAR desabilitado", str(app.bt_capturar["state"]), "disabled")
@@ -97,11 +111,19 @@ checar("rotulo verde", str(app.lb_idn["foreground"]), "green")
 checar("CAPTURAR liberado", str(app.bt_capturar["state"]), "normal")
 
 print("\n[5] captura com sucesso")
+copias = []
+G.copiar_imagem = lambda caminho: copias.append(caminho)
 app._fim_captura(True, (destino, 123456))
 raiz.update()
 checar("previa 1280x768 reduzida", (app.imagem_tk.width(), app.imagem_tk.height()),
        (427, 256))
 checar("botao abrir imagem", str(app.bt_abrir_img["state"]), "normal")
+checar("copia automatica habilitada", copias, [destino])
+
+app.var_copiar.set(False)
+app._fim_captura(True, (destino, 123456))
+raiz.update()
+checar("copia automatica desabilitada", copias, [destino])
 
 print("\n[6] cabo arrancado no meio da captura")
 app._fim_captura(False, PermissionError(13, "negado", destino))

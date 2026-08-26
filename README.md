@@ -1,4 +1,4 @@
-# Captura de tela — Keysight DSO-X 3024T
+# Zagoview — Captura de tela do Keysight DSO-X 3024T
 
 Captura a imagem da tela do osciloscópio via USB (SCPI/pyvisa) e salva em disco.
 
@@ -11,6 +11,20 @@ Captura a imagem da tela do osciloscópio via USB (SCPI/pyvisa) e salva em disco
 | `captura_dsox3024t.py` | Linha de comando (uso em scripts/automação) |
 | `dsox_core.py` | Comunicação SCPI — usado pela interface e pela CLI |
 | `teste_interface.py` | Teste da interface sem precisar do osciloscópio |
+| `assets/` | Logo da marca em SVG (vetor) e PNG (usado pela janela) |
+
+## Identidade visual
+
+O cabeçalho traz a marca em `#128c4f`, o verde de ação da Zagonel (o mesmo do
+fundo dos botões no site). O SVG original é branco, para fundo escuro; a versão
+verde foi gerada trocando os 9 `fill="white"` e rasterizada com o Edge em modo
+headless, já que o Tk não renderiza SVG:
+
+```bash
+msedge --headless=new --default-background-color=00000000 --window-size=149,44 --screenshot=assets/logo-zagonel-verde.png assets/logo-zagonel-verde.svg
+```
+
+Se o PNG faltar, a janela abre do mesmo jeito, com a marca em texto.
 
 ## Requisitos
 

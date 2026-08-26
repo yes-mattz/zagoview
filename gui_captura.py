@@ -1,5 +1,6 @@
 """
-Interface grafica para captura de tela do osciloscopio Keysight DSO-X 3024T.
+Interface grafica do Zagoview para captura de tela do osciloscopio
+Keysight DSO-X 3024T.
 
 Uso:
     python gui_captura.py
@@ -9,6 +10,7 @@ Requisitos: Keysight IO Libraries Suite + pip install pyvisa
 Toda a comunicacao com o instrumento fica em dsox_core.py.
 """
 
+import contextlib
 import json
 import os
 import queue
@@ -27,6 +29,12 @@ import dsox_core
 ARQUIVO_CONFIG = os.path.join(os.path.expanduser("~"), ".captura_dsox.json")
 PREVIA_LARGURA = 560
 PREVIA_ALTURA = 340
+SEM_DISPOSITIVO = "Nenhum dispositivo selecionado."
+
+PASTA_APP = os.path.dirname(os.path.abspath(__file__))
+LOGO = os.path.join(PASTA_APP, "assets", "logo-zagonel-verde.png")
+VERDE = "#128c4f"          # verde de acao da marca Zagonel
+CINZA_TEXTO = "#5a5a5a"
 
 
 def carregar_config():
@@ -85,9 +93,9 @@ def texto_do_erro(e):
 class Aplicacao(ttk.Frame):
     def __init__(self, mestre):
         super().__init__(mestre, padding=12)
-        self.grid(sticky="nsew")
+        self.grid(row=1, column=0, sticky="nsew")
         mestre.columnconfigure(0, weight=1)
-        mestre.rowconfigure(0, weight=1)
+        mestre.rowconfigure(1, weight=1)
 
         cfg = carregar_config()
         self.fila = queue.Queue()
@@ -104,6 +112,7 @@ class Aplicacao(ttk.Frame):
         self.var_cinza = tk.BooleanVar(value=cfg.get("cinza", False))
         self.var_inksaver = tk.BooleanVar(value=cfg.get("inksaver", False))
         self.var_abrir_apos = tk.BooleanVar(value=cfg.get("abrir_apos", False))
+        self.var_copiar = tk.BooleanVar(value=cfg.get("copiar", True))
         self.var_status = tk.StringVar(value="Pronto.")
 
         self._montar()
@@ -177,6 +186,10 @@ class Aplicacao(ttk.Frame):
                         variable=self.var_abrir_apos).grid(row=1, column=0,
                                                            columnspan=4,
                                                            sticky="w", pady=(8, 0))
+        ttk.Checkbutton(g, text="Copiar imagem para a area de transferencia",
+                variable=self.var_copiar).grid(row=2, column=0,
+                                   columnspan=4,
+                                   sticky="w", pady=(8, 0))
 
         # --- Acao -------------------------------------------------------
         g = ttk.Frame(self)
@@ -316,10 +329,9 @@ class Aplicacao(ttk.Frame):
 
         self.cb_recurso["values"] = dados
         if not dados:
-            # Sem instrumento presente o campo tem de ficar vazio: manter o
-            # endereco antigo na tela da a impressao de que ainda esta ligado.
-            self.var_recurso.set("")
-            self._marcar_desconectado("Nenhum instrumento conectado.")
+            # A mensagem informa claramente que ainda nao ha instrumento selecionado.
+            self.var_recurso.set(SEM_DISPOSITIVO)
+            self._marcar_desconectado("Nenhum instrumento conectado.", vermelho=True)
             self.var_status.set("Nenhum instrumento VISA encontrado.")
             self.log("Nenhum instrumento VISA encontrado. Verifique o cabo USB.")
             return
@@ -333,8 +345,8 @@ class Aplicacao(ttk.Frame):
 
     def testar_conexao(self, avisar=False):
         recurso = self.var_recurso.get().strip()
-        if not recurso:
-            self._marcar_desconectado("Nenhum instrumento conectado.")
+        if not recurso or recurso == SEM_DISPOSITIVO:
+            self._marcar_desconectado("Nenhum instrumento conectado.", vermelho=True)
             return
         self._avisar_falha_teste = avisar
         self._executar(lambda: dsox_core.identificar(recurso), "teste",
@@ -391,6 +403,8 @@ class Aplicacao(ttk.Frame):
         self.log(f"Imagem salva ({tamanho / 1024:.0f} KB): {caminho}")
         self._mostrar_previa(caminho)
         self._atualizar_exemplo()
+        if self.var_copiar.get():
+            self.copiar()
         if self.var_abrir_apos.get():
             self.abrir_imagem()
 
@@ -443,18 +457,52 @@ class Aplicacao(ttk.Frame):
             "cinza": self.var_cinza.get(),
             "inksaver": self.var_inksaver.get(),
             "abrir_apos": self.var_abrir_apos.get(),
+            "copiar": self.var_copiar.get(),
         })
         self.winfo_toplevel().destroy()
 
 
+def montar_cabecalho(raiz):
+    """Faixa superior com a marca. Devolve a imagem, que precisa continuar
+    referenciada: o Tk descarta o PhotoImage recolhido pelo coletor."""
+    faixa = tk.Frame(raiz, bg="white", padx=16, pady=10)
+    faixa.grid(row=0, column=0, sticky="ew")
+    faixa.columnconfigure(1, weight=1)
+
+    imagem = None
+    try:
+        imagem = tk.PhotoImage(file=LOGO)
+        tk.Label(faixa, image=imagem, bg="white").grid(row=0, column=0,
+                                                       rowspan=2, sticky="w")
+    except tk.TclError:
+        # Sem o PNG a janela abre do mesmo jeito, so que com a marca em texto.
+        tk.Label(faixa, text="ZAGONEL", bg="white", fg=VERDE,
+                 font=("Segoe UI", 16, "bold")).grid(row=0, column=0,
+                                                     rowspan=2, sticky="w")
+
+    tk.Label(faixa, text="Zagoview", bg="white", fg=VERDE,
+             font=("Segoe UI", 13, "bold")).grid(row=0, column=1, sticky="sw",
+                                                 padx=(14, 0))
+    tk.Label(faixa, text="Captura de tela  |  Keysight DSO-X 3024T", bg="white",
+             fg=CINZA_TEXTO, font=("Segoe UI", 9)).grid(row=1, column=1,
+                                                        sticky="nw", padx=(14, 0))
+
+    tk.Frame(raiz, bg=VERDE, height=3).grid(row=0, column=0, sticky="sew")
+    return imagem
+
+
 def main():
     raiz = tk.Tk()
-    raiz.title("Captura de Tela - Keysight DSO-X 3024T")
+    raiz.title("Zagoview")
     raiz.minsize(700, 760)
     try:
         ttk.Style().theme_use("vista")
     except tk.TclError:
         pass
+    raiz.logo = montar_cabecalho(raiz)
+    if raiz.logo is not None:
+        with contextlib.suppress(tk.TclError):
+            raiz.iconphoto(True, raiz.logo)
     app = Aplicacao(raiz)
     raiz.protocol("WM_DELETE_WINDOW", app.ao_fechar)
     raiz.mainloop()
