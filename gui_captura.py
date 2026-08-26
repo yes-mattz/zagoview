@@ -488,7 +488,7 @@ def montar_cabecalho(raiz):
     tk.Label(faixa, text="Zagoview", bg="white", fg=VERDE,
              font=("Segoe UI", 13, "bold")).grid(row=0, column=1, sticky="sw",
                                                  padx=(14, 0))
-    tk.Label(faixa, text="Captura de tela  |  Keysight DSO-X 3024T", bg="white",
+    tk.Label(faixa, text="Captura de tela de instrumentos", bg="white",
              fg=CINZA_TEXTO, font=("Segoe UI", 9)).grid(row=1, column=1,
                                                         sticky="nw", padx=(14, 0))
 
