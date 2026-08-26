@@ -1,13 +1,13 @@
 """
-Interface grafica do Zagoview para captura de tela do osciloscopio
-Keysight DSO-X 3024T.
+Interface grafica do Zagoview: captura a tela de instrumentos SCPI.
 
 Uso:
     python gui_captura.py
-    (ou duplo clique em "Captura DSOX.bat")
+    (ou duplo clique em "Zagoview.bat")
 
-Requisitos: Keysight IO Libraries Suite + pip install pyvisa
-Toda a comunicacao com o instrumento fica em dsox_core.py.
+Requisitos: uma implementacao VISA (Keysight IO Libraries, NI-VISA ou a do
+fabricante do seu instrumento) + pip install pyvisa
+Toda a comunicacao com o instrumento fica em instrumento.py.
 """
 
 import contextlib
@@ -24,9 +24,12 @@ from tkinter import filedialog, messagebox, ttk
 
 import pyvisa
 
-import dsox_core
+import instrumento
 
-ARQUIVO_CONFIG = os.path.join(os.path.expanduser("~"), ".captura_dsox.json")
+ARQUIVO_CONFIG = os.path.join(os.path.expanduser("~"), ".zagoview.json")
+# Nome antigo, de quando o programa era so do DSO-X: lido uma vez para nao
+# perder as preferencias de quem ja usava.
+CONFIG_ANTIGO = os.path.join(os.path.expanduser("~"), ".captura_dsox.json")
 PREVIA_LARGURA = 560
 PREVIA_ALTURA = 340
 SEM_DISPOSITIVO = "Nenhum dispositivo selecionado."
@@ -43,11 +46,13 @@ CINZA_TEXTO = "#5a5a5a"
 
 
 def carregar_config():
-    try:
-        with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    for caminho in (ARQUIVO_CONFIG, CONFIG_ANTIGO):
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            continue
+    return {}
 
 
 def salvar_config(dados):
@@ -85,8 +90,9 @@ def texto_do_erro(e):
     if isinstance(e, pyvisa.errors.VisaIOError):
         return ("Falha de comunicacao VISA:\n"
                 f"{e}\n\n"
-                "Verifique o cabo USB, se o osciloscopio esta ligado e se ele "
-                "aparece no Keysight Connection Expert.")
+                "Verifique o cabo, se o instrumento esta ligado e se ele aparece "
+                "no seu utilitario VISA (Keysight Connection Expert, NI MAX ou "
+                "equivalente do fabricante).")
     if isinstance(e, PermissionError):
         return (f"Sem permissao para gravar em:\n{e.filename}\n\n"
                 "Causa comum: 'Acesso controlado a pastas' do Windows Defender "
@@ -110,8 +116,8 @@ class Aplicacao(ttk.Frame):
         self.imagem_tk = None
 
         self.var_recurso = tk.StringVar(
-            value=cfg.get("recurso", dsox_core.RECURSO_PADRAO))
-        self.var_pasta = tk.StringVar(value=cfg.get("pasta", dsox_core.PASTA_PADRAO))
+            value=cfg.get("recurso", instrumento.RECURSO_PADRAO))
+        self.var_pasta = tk.StringVar(value=cfg.get("pasta", instrumento.PASTA_PADRAO))
         self.var_prefixo = tk.StringVar(value=cfg.get("prefixo", "tela"))
         self.var_formato = tk.StringVar(value=cfg.get("formato", "PNG"))
         self.var_cinza = tk.BooleanVar(value=cfg.get("cinza", False))
@@ -180,7 +186,7 @@ class Aplicacao(ttk.Frame):
         g.grid(row=2, column=0, sticky="ew", pady=(10, 0))
 
         ttk.Label(g, text="Formato:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        ttk.Combobox(g, textvariable=self.var_formato, values=dsox_core.FORMATOS,
+        ttk.Combobox(g, textvariable=self.var_formato, values=instrumento.FORMATOS,
                      state="readonly", width=10).grid(row=0, column=1, sticky="w")
         ttk.Checkbutton(g, text="Escala de cinza", variable=self.var_cinza).grid(
             row=0, column=2, sticky="w", padx=(20, 0))
@@ -244,7 +250,7 @@ class Aplicacao(ttk.Frame):
         self._atualizar_exemplo()
 
     def _atualizar_exemplo(self):
-        exemplo = dsox_core.nome_automatico(self.var_pasta.get(),
+        exemplo = instrumento.nome_automatico(self.var_pasta.get(),
                                             self.var_prefixo.get() or "tela",
                                             self.var_formato.get())
         self.lb_exemplo.configure(text="Proximo arquivo:  " + exemplo)
@@ -320,7 +326,7 @@ class Aplicacao(ttk.Frame):
         como o 'Rescan' do Connection Expert. E o que recupera o programa
         depois que o cabo USB e retirado e recolocado, sem fechar a janela.
         """
-        self._executar(lambda: dsox_core.listar_recursos(reenumerar), "procura",
+        self._executar(lambda: instrumento.listar_recursos(reenumerar), "procura",
                        "Reconectando ao VISA..." if reenumerar
                        else "Procurando instrumentos VISA...")
 
@@ -354,7 +360,7 @@ class Aplicacao(ttk.Frame):
             self._marcar_desconectado("Nenhum instrumento conectado.", vermelho=True)
             return
         self._avisar_falha_teste = avisar
-        self._executar(lambda: dsox_core.identificar(recurso), "teste",
+        self._executar(lambda: instrumento.identificar(recurso), "teste",
                        "Consultando *IDN?...")
 
     def _fim_teste(self, ok, dados):
@@ -385,11 +391,11 @@ class Aplicacao(ttk.Frame):
         formato = self.var_formato.get()
         paleta = "GRAYscale" if self.var_cinza.get() else "COLor"
         inksaver = self.var_inksaver.get()
-        destino = dsox_core.nome_automatico(self.var_pasta.get(),
+        destino = instrumento.nome_automatico(self.var_pasta.get(),
                                             self.var_prefixo.get() or "tela",
                                             formato)
         self._executar(
-            lambda: dsox_core.capturar(recurso, destino, formato, paleta, inksaver),
+            lambda: instrumento.capturar(recurso, destino, formato, paleta, inksaver),
             "captura", "Capturando a tela do osciloscopio...")
 
     def _fim_captura(self, ok, dados):
@@ -488,7 +494,7 @@ def montar_cabecalho(raiz):
     tk.Label(faixa, text="Zagoview", bg="white", fg=VERDE,
              font=("Segoe UI", 13, "bold")).grid(row=0, column=1, sticky="sw",
                                                  padx=(14, 0))
-    tk.Label(faixa, text="Captura de tela de instrumentos", bg="white",
+    tk.Label(faixa, text="Captura de tela", bg="white",
              fg=CINZA_TEXTO, font=("Segoe UI", 9)).grid(row=1, column=1,
                                                         sticky="nw", padx=(14, 0))
 

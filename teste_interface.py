@@ -27,8 +27,8 @@ def _sem_instrumento(*_a, **_k):
 
 # O resultado nao pode mudar conforme o osciloscopio esteja ligado ou nao:
 # o teste simula a ausencia de hardware e injeta as respostas ele mesmo.
-G.dsox_core.listar_recursos = lambda *a, **k: []
-G.dsox_core.identificar = _sem_instrumento
+G.instrumento.listar_recursos = lambda *a, **k: []
+G.instrumento.identificar = _sem_instrumento
 
 
 def gerar_png(path, w=1280, h=768):

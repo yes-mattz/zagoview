@@ -1,10 +1,10 @@
-"""Teste do dsox_core sem precisar do osciloscopio (sessoes simuladas)."""
+"""Teste do instrumento sem precisar do osciloscopio (sessoes simuladas)."""
 import contextlib
 
 import pyvisa
 from pyvisa import constants
 
-import dsox_core
+import instrumento
 
 
 def erro(codigo):
@@ -31,7 +31,7 @@ class FalsoScope:
 
 
 def simular(mapa):
-    """Substitui dsox_core.sessao por um dicionario endereco -> FalsoScope."""
+    """Substitui instrumento.sessao por um dicionario endereco -> FalsoScope."""
     limpezas = []
 
     @contextlib.contextmanager
@@ -42,7 +42,7 @@ def simular(mapa):
             raise alvo
         yield alvo
 
-    dsox_core.sessao = sessao
+    instrumento.sessao = sessao
     return limpezas
 
 
@@ -63,21 +63,21 @@ limpezas = simular({
 })
 
 print("\n[1] responde() por endereco")
-checar("instrumento presente", dsox_core.responde(VIVO), True)
-checar("endereco fantasma", dsox_core.responde(FANTASMA), False)
+checar("instrumento presente", instrumento.responde(VIVO), True)
+checar("endereco fantasma", instrumento.responde(FANTASMA), False)
 checar("ocupado por outro programa continua listado",
-       dsox_core.responde(OCUPADO), True)
+       instrumento.responde(OCUPADO), True)
 
 print("\n[2] a validacao nao pode perturbar quem esta no meio de uma medida")
 checar("nenhum viClear durante a varredura",
        [r for r, limpar in limpezas if limpar], [])
 
 print("\n[3] listar_recursos filtra os que nao respondem")
-dsox_core.gerenciador = lambda: type("RM", (), {
+instrumento.gerenciador = lambda: type("RM", (), {
     "list_resources": staticmethod(lambda: (VIVO, FANTASMA, OCUPADO))})()
-checar("so os presentes", dsox_core.listar_recursos(validar=True),
+checar("so os presentes", instrumento.listar_recursos(validar=True),
        [VIVO, OCUPADO])
-checar("sem validar, lista crua", dsox_core.listar_recursos(validar=False),
+checar("sem validar, lista crua", instrumento.listar_recursos(validar=False),
        [VIVO, FANTASMA, OCUPADO])
 
 print("\nTODOS OS TESTES PASSARAM")

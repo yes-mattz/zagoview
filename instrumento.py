@@ -1,8 +1,12 @@
 """
-Nucleo de comunicacao com o osciloscopio Keysight DSO-X (serie 3000T) via SCPI.
+Nucleo de comunicacao com instrumentos SCPI via VISA.
+
+Serve qualquer aparelho que o VISA enxergue e que atenda ao comando
+:DISPlay:DATA? - osciloscopios, geradores, analisadores. Foi escrito contra
+um Keysight DSO-X 3024T, entao os padroes seguem o dialeto da Keysight.
 
 Este modulo nao tem interface: e usado tanto pela linha de comando
-(captura_dsox3024t.py) quanto pela interface grafica (gui_captura.py).
+(cli_captura.py) quanto pela interface grafica (gui_captura.py).
 
 Sobre a sessao VISA
 -------------------
@@ -24,9 +28,11 @@ import threading
 import pyvisa
 from pyvisa import constants
 
-# String VISA padrao (Connection Expert).
-# Para conexao por rede, use algo como 'TCPIP0::192.168.0.10::inst0::INSTR'
-RECURSO_PADRAO = "USB0::0x2A8D::0x1766::MY55280502::0::INSTR"
+# Sem endereco fixo: a varredura acha o instrumento, seja ele qual for.
+# Um endereco chumbado aqui so acertaria em um aparelho, e ficaria errado no
+# dia em que ele fosse trocado. Enderecos de rede tambem valem, no formato
+# 'TCPIP0::192.168.0.10::inst0::INSTR'.
+RECURSO_PADRAO = ""
 
 FORMATOS = ["PNG", "BMP", "BMP8bit"]
 EXTENSAO = {"PNG": ".png", "BMP": ".bmp", "BMP8bit": ".bmp"}

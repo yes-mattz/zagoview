@@ -1,16 +1,19 @@
-# Zagoview — Captura de tela do Keysight DSO-X 3024T
+# Zagoview — Captura de tela de instrumentos
 
-Captura a imagem da tela do osciloscópio via USB (SCPI/pyvisa) e salva em disco.
+Captura a imagem da tela de um instrumento SCPI via VISA (USB ou rede) e salva
+em disco. Serve qualquer aparelho que o VISA enxergue e que atenda ao comando
+`:DISPlay:DATA?` — osciloscópios, geradores, analisadores. Foi escrito e testado
+contra um Keysight DSO-X 3024T, então os padrões seguem o dialeto da Keysight.
 
 ## Arquivos
 
 | Arquivo | Para que serve |
 |---|---|
 | `gui_captura.py` | Interface gráfica (Tkinter) |
-| `Captura DSOX.bat` | Atalho de duplo clique, abre a interface sem console |
-| `captura_dsox3024t.py` | Linha de comando (uso em scripts/automação) |
-| `dsox_core.py` | Comunicação SCPI — usado pela interface e pela CLI |
-| `teste_interface.py` | Teste da interface sem precisar do osciloscópio |
+| `Zagoview.bat` | Atalho de duplo clique, abre a interface sem console |
+| `cli_captura.py` | Linha de comando (uso em scripts/automação) |
+| `instrumento.py` | Comunicação SCPI — usado pela interface e pela CLI |
+| `teste_interface.py` | Teste da interface sem precisar do instrumento |
 | `assets/` | Logo da marca em SVG (vetor) e PNG (usado pela janela) |
 
 ## Identidade visual
@@ -39,7 +42,8 @@ python assets/gerar_icone.py
 
 ## Requisitos
 
-- Keysight IO Libraries Suite (fornece o driver VISA)
+- Uma implementação VISA: Keysight IO Libraries, NI-VISA ou a do fabricante
+  do seu instrumento (é ela que fornece o driver)
 - `pip install -r requirements.txt`
 
 Tkinter já vem com o Python no Windows — não há dependência extra para a interface.
@@ -50,14 +54,15 @@ Tkinter já vem com o Python no Windows — não há dependência extra para a i
 python gui_captura.py
 ```
 
-Ou duplo clique em `Captura DSOX.bat`.
+Ou duplo clique em `Zagoview.bat`.
 
 - **Procurar** lista os instrumentos VISA visíveis; **Testar conexão** mostra o `*IDN?`.
 - **Pasta** e **Prefixo** definem o destino; o nome recebe data/hora automaticamente
   (`tela_20260826_083547.png`) — a linha "Próximo arquivo" mostra como vai ficar.
 - **CAPTURAR** (ou F5) faz a leitura em segundo plano, salva e exibe a prévia.
 - **Copiar** joga a última imagem na área de transferência (colar direto no relatório).
-- As preferências ficam em `%USERPROFILE%\.captura_dsox.json` e voltam na próxima abertura.
+- As preferências ficam em `%USERPROFILE%\.zagoview.json` e voltam na próxima abertura.
+  O arquivo antigo, `.captura_dsox.json`, ainda é lido se o novo não existir.
 
 A pasta padrão é `%USERPROFILE%\Capturas_DSOX`, fora de Desktop/Documentos, que costumam
 estar protegidos pelo "Acesso controlado a pastas" do Windows Defender.
@@ -65,15 +70,15 @@ estar protegidos pelo "Acesso controlado a pastas" do Windows Defender.
 ## Linha de comando
 
 ```bash
-python captura_dsox3024t.py
+python cli_captura.py
 ```
 
 ```bash
-python captura_dsox3024t.py medida.png --inksaver --cinza
+python cli_captura.py medida.png --inksaver --cinza
 ```
 
 ```bash
-python captura_dsox3024t.py --listar
+python cli_captura.py --listar
 ```
 
 Opções: `--recurso`, `--formato {PNG,BMP,BMP8bit}`, `--cinza`, `--inksaver`,
@@ -83,7 +88,7 @@ Opções: `--recurso`, `--formato {PNG,BMP,BMP8bit}`, `--cinza`, `--inksaver`,
 
 O `ResourceManager` do pyvisa é um singleton por processo e a enumeração dos
 instrumentos fica presa na sessão VISA. Depois de um replug, a sessão antiga
-está inválida e o programa não acha mais o osciloscópio.
+está inválida e o programa não acha mais o instrumento.
 
 O botão **Procurar** descarta a sessão e reenumera — é o "Rescan" do Connection
 Expert feito de dentro do programa, sem fechar a janela. As operações também
@@ -101,7 +106,7 @@ powershell "Get-PnpDevice | ? { $_.InstanceId -match 'VID_2A8D' } | fl Present, 
 ```
 
 `Present: False` significa que o Windows não enumerou o aparelho — cabo, porta
-ou a porta USB traseira (device) do osciloscópio, nada que o software resolva.
+ou a porta USB de dispositivo do instrumento, nada que o software resolva.
 
 ## O que conta como "conectado"
 
@@ -123,14 +128,14 @@ está mais lá.
 ## Testes
 
 ```bash
-python teste_nucleo.py
+python teste_instrumento.py
 ```
 
 ```bash
 python teste_interface.py
 ```
 
-Rodam sem osciloscópio: o núcleo com sessões VISA simuladas, a interface
+Rodam sem instrumento: o núcleo com sessões VISA simuladas, a interface
 percorrendo os estados de conexão em uma janela real.
 
 ## Observações
