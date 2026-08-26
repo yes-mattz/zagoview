@@ -54,6 +54,30 @@ python captura_dsox3024t.py --listar
 Opções: `--recurso`, `--formato {PNG,BMP,BMP8bit}`, `--cinza`, `--inksaver`,
 `--listar`, `--sem-pausa`.
 
+## Cabo USB retirado e recolocado
+
+O `ResourceManager` do pyvisa é um singleton por processo e a enumeração dos
+instrumentos fica presa na sessão VISA. Depois de um replug, a sessão antiga
+está inválida e o programa não acha mais o osciloscópio.
+
+O botão **Procurar** descarta a sessão e reenumera — é o "Rescan" do Connection
+Expert feito de dentro do programa, sem fechar a janela. As operações também
+tentam isso sozinhas, uma vez, quando recebem um erro típico de dispositivo
+removido (`RSRC_NFOUND`, `RSRC_BUSY`, `CONN_LOST`, `INV_OBJECT`, `IO`).
+
+Antes de cada operação é feito `viClear` + `*CLS`: se uma captura for abortada
+no meio, o resto da imagem fica na fila de saída do instrumento e a leitura
+seguinte sairia corrompida.
+
+Se mesmo assim não aparecer, o problema é físico. Confira com:
+
+```bash
+powershell "Get-PnpDevice | ? { $_.InstanceId -match 'VID_2A8D' } | fl Present, Status, FriendlyName"
+```
+
+`Present: False` significa que o Windows não enumerou o aparelho — cabo, porta
+ou a porta USB traseira (device) do osciloscópio, nada que o software resolva.
+
 ## Observações
 
 - A prévia usa o Tk, que só exibe PNG. Em BMP a captura funciona normalmente,

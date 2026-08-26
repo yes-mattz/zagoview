@@ -107,7 +107,8 @@ class Aplicacao(ttk.Frame):
 
         self._montar()
         self.after(100, self._processar_fila)
-        self.after(300, self.procurar_instrumentos)
+        # No inicio a sessao VISA e nova: nao ha o que reenumerar.
+        self.after(300, lambda: self.procurar_instrumentos(False))
 
     # ------------------------------------------------------------------ UI
     def _montar(self):
@@ -267,9 +268,16 @@ class Aplicacao(ttk.Frame):
         self.after(100, self._processar_fila)
 
     # ----------------------------------------------------------- acoes
-    def procurar_instrumentos(self):
-        self._executar(dsox_core.listar_recursos, "procura",
-                       "Procurando instrumentos VISA...")
+    def procurar_instrumentos(self, reenumerar=True):
+        """Varre os instrumentos VISA.
+
+        Com reenumerar=True a sessao VISA e descartada antes da varredura,
+        como o 'Rescan' do Connection Expert. E o que recupera o programa
+        depois que o cabo USB e retirado e recolocado, sem fechar a janela.
+        """
+        self._executar(lambda: dsox_core.listar_recursos(reenumerar), "procura",
+                       "Reconectando ao VISA..." if reenumerar
+                       else "Procurando instrumentos VISA...")
 
     def _fim_procura(self, ok, dados):
         if not ok:
