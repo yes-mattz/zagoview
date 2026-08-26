@@ -26,6 +26,17 @@ msedge --headless=new --default-background-color=00000000 --window-size=149,44 -
 
 Se o PNG faltar, a janela abre do mesmo jeito, com a marca em texto.
 
+O ícone da janela é o "Z" da marca, o mesmo símbolo do favicon do site. O
+favicon oficial é um raster de 69x106 e ficaria distorcido num ícone quadrado,
+então o mesmo glifo é extraído em vetor do primeiro `<path>` do wordmark,
+centralizado num quadrado e rasterizado em 16/32/48/64 px — o Windows pede 16
+para a barra de título e 32/48 para a barra de tarefas e o Alt+Tab. A cor é o
+`#009a42` do favicon. Para regerar:
+
+```bash
+python assets/gerar_icone.py
+```
+
 ## Requisitos
 
 - Keysight IO Libraries Suite (fornece o driver VISA)

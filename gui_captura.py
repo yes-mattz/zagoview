@@ -33,6 +33,11 @@ SEM_DISPOSITIVO = "Nenhum dispositivo selecionado."
 
 PASTA_APP = os.path.dirname(os.path.abspath(__file__))
 LOGO = os.path.join(PASTA_APP, "assets", "logo-zagonel-verde.png")
+# O "Z" da marca, o mesmo simbolo do favicon do site. Varios tamanhos porque
+# o Windows pede um para a barra de titulo (16) e outro para a barra de
+# tarefas e o Alt+Tab (32/48).
+ICONES = [os.path.join(PASTA_APP, "assets", f"icone-z-{n}.png")
+          for n in (16, 32, 48, 64)]
 VERDE = "#128c4f"          # verde de acao da marca Zagonel
 CINZA_TEXTO = "#5a5a5a"
 
@@ -491,6 +496,24 @@ def montar_cabecalho(raiz):
     return imagem
 
 
+def definir_icone(raiz):
+    """Poe o "Z" da marca na barra de titulo e na barra de tarefas.
+
+    Devolve a lista de imagens, que precisa continuar referenciada enquanto a
+    janela existir. Sem os arquivos, a janela abre com o icone padrao do Tk.
+    """
+    imagens = []
+    for caminho in ICONES:
+        try:
+            imagens.append(tk.PhotoImage(file=caminho))
+        except tk.TclError:
+            pass
+    if imagens:
+        with contextlib.suppress(tk.TclError):
+            raiz.iconphoto(True, *imagens)
+    return imagens
+
+
 def main():
     raiz = tk.Tk()
     raiz.title("Zagoview")
@@ -500,9 +523,7 @@ def main():
     except tk.TclError:
         pass
     raiz.logo = montar_cabecalho(raiz)
-    if raiz.logo is not None:
-        with contextlib.suppress(tk.TclError):
-            raiz.iconphoto(True, raiz.logo)
+    raiz.icones = definir_icone(raiz)
     app = Aplicacao(raiz)
     raiz.protocol("WM_DELETE_WINDOW", app.ao_fechar)
     raiz.mainloop()
