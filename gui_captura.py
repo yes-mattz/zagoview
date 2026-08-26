@@ -35,7 +35,10 @@ PREVIA_LARGURA = 560
 PREVIA_ALTURA = 340
 SEM_DISPOSITIVO = "Nenhum dispositivo selecionado."
 
-PASTA_APP = os.path.dirname(os.path.abspath(__file__))
+# Empacotado com PyInstaller em arquivo unico, o programa roda a partir de uma
+# pasta temporaria de extracao, e __file__ nao aponta mais para os arquivos de
+# apoio: eles ficam onde o _MEIPASS indica.
+PASTA_APP = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 LOGO = os.path.join(PASTA_APP, "assets", "logo-zagonel-verde.png")
 # O "Z" da marca, o mesmo simbolo do favicon do site. Varios tamanhos porque
 # o Windows pede um para a barra de titulo (16) e outro para a barra de

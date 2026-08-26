@@ -14,7 +14,8 @@ Verificado contra um Keysight DSO-X 3024T e um Rigol DSA832E.
 | `cli_captura.py` | Linha de comando (uso em scripts/automação) |
 | `instrumento.py` | Comunicação SCPI — usado pela interface e pela CLI |
 | `teste_interface.py` | Teste da interface sem precisar do instrumento |
-| `assets/` | Logo da marca em SVG (vetor) e PNG (usado pela janela) |
+| `assets/` | Logo e ícones: SVG (vetor), PNG (janela) e `.ico` (executável) |
+| `zagoview.spec` | Receita do PyInstaller para gerar o executável |
 
 ## Identidade visual
 
@@ -32,13 +33,40 @@ Se o PNG faltar, a janela abre do mesmo jeito, com a marca em texto.
 O ícone da janela é o "Z" da marca, o mesmo símbolo do favicon do site. O
 favicon oficial é um raster de 69x106 e ficaria distorcido num ícone quadrado,
 então o mesmo glifo é extraído em vetor do primeiro `<path>` do wordmark,
-centralizado num quadrado e rasterizado em 16/32/48/64 px — o Windows pede 16
-para a barra de título e 32/48 para a barra de tarefas e o Alt+Tab. A cor é o
-`#009a42` do favicon. Para regerar:
+centralizado num quadrado e rasterizado nos tamanhos que o Windows pede: 16 px
+para a barra de título, 32/48 para a barra de tarefas e o Alt+Tab. A cor é o
+`#009a42` do favicon.
+
+O mesmo gerador monta o `zagoview.ico` do executável, com sete tamanhos de 16 a
+256 px. O payload é DIB, e não PNG embutido: o formato aceita os dois desde o
+Vista, mas nem todo leitor entende PNG — o `System.Drawing` do .NET devolve cor
+embaralhada, e o ícone de um `.exe` passa por leitores assim. Para regerar:
 
 ```bash
 python assets/gerar_icone.py
 ```
+
+## Executável
+
+Para distribuir a quem não tem Python instalado:
+
+```bash
+pyinstaller zagoview.spec
+```
+
+Sai um `dist/Zagoview.exe` de ~13 MB, arquivo único, com a logo e os ícones
+embutidos. A receita está em `zagoview.spec`.
+
+**O VISA não vai dentro.** O programa fala com o `visa32.dll` que a
+implementação do fabricante instala no Windows, e essa biblioteca não é nossa
+para redistribuir. Ou seja: o executável dispensa Python e pyvisa na máquina de
+destino, **não** o Keysight IO Libraries (ou NI-VISA). Qualquer PC que já
+converse com os instrumentos tem isso instalado; um que nunca usou, não.
+
+Por ser arquivo único, cada abertura descompacta o conteúdo numa pasta
+temporária — daí o pequeno atraso no primeiro clique. Por isso o código procura
+os arquivos de apoio em `sys._MEIPASS` quando existe, e ao lado do `.py` quando
+roda como script.
 
 ## Requisitos
 
