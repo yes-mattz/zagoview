@@ -116,11 +116,42 @@ def sessao(recurso, timeout=20000, limpar=True):
                 scope.close()
 
 
-def listar_recursos(reenumerar=False):
-    """Devolve a lista de instrumentos VISA visiveis no PC."""
+# Um instrumento ocupado por outro programa continua conectado; nao pode
+# sumir da lista so porque nao pode atender agora.
+ERROS_DE_OCUPADO = {
+    constants.StatusCode.error_resource_busy,
+    constants.StatusCode.error_resource_locked,
+}
+
+
+def responde(recurso, timeout=2000):
+    """Confirma que o endereco existe de fato, com um *IDN? curto.
+
+    Nao usa viClear aqui: a varredura passa por todos os instrumentos do PC e
+    limpar a E/S de um aparelho que outro programa esta usando abortaria a
+    transferencia dele.
+    """
+    try:
+        with sessao(recurso, timeout, limpar=False) as scope:
+            return bool(scope.query("*IDN?").strip())
+    except pyvisa.errors.VisaIOError as e:
+        return e.error_code in ERROS_DE_OCUPADO
+    except Exception:
+        return False
+
+
+def listar_recursos(reenumerar=False, validar=True):
+    """Lista os instrumentos VISA presentes.
+
+    Com validar=True devolve so os que respondem: o VISA pode continuar
+    anunciando um endereco de aparelho ja desligado ou desconectado.
+    """
     if reenumerar:
         reiniciar()
-    return _com_retentativa(lambda: list(gerenciador().list_resources()))
+    achados = _com_retentativa(lambda: list(gerenciador().list_resources()))
+    if not validar:
+        return achados
+    return [r for r in achados if responde(r)]
 
 
 def identificar(recurso, timeout=5000):

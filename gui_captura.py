@@ -92,6 +92,7 @@ class Aplicacao(ttk.Frame):
         cfg = carregar_config()
         self.fila = queue.Queue()
         self.ocupado = False
+        self.conectado = False
         self.ultimo_arquivo = None
         self.imagem_tk = None
 
@@ -127,11 +128,18 @@ class Aplicacao(ttk.Frame):
                                       command=self.procurar_instrumentos)
         self.bt_procurar.grid(row=0, column=2, padx=(8, 0))
         self.bt_testar = ttk.Button(g, text="Testar conexao", width=16,
-                                    command=self.testar_conexao)
+                                    command=lambda: self.testar_conexao(True))
         self.bt_testar.grid(row=0, column=3, padx=(8, 0))
 
         self.lb_idn = ttk.Label(g, text="Nao conectado.", foreground="gray")
         self.lb_idn.grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
+
+        # Trocar de endereco invalida a conexao atual: o que esta na tela
+        # so pode dizer "conectado" sobre o endereco que respondeu ao *IDN?.
+        self.cb_recurso.bind("<<ComboboxSelected>>",
+                             lambda _e: self.testar_conexao())
+        self.var_recurso.trace_add(
+            "write", lambda *_: self._marcar_desconectado("Nao verificado."))
 
         # --- Destino ----------------------------------------------------
         g = ttk.LabelFrame(self, text="Destino", padding=10)
@@ -232,14 +240,33 @@ class Aplicacao(ttk.Frame):
     def _travar(self, ocupado, status=""):
         self.ocupado = ocupado
         estado = "disabled" if ocupado else "normal"
-        for b in (self.bt_capturar, self.bt_testar, self.bt_procurar):
+        for b in (self.bt_testar, self.bt_procurar):
             b.configure(state=estado)
+        self._atualizar_estado_captura()
         if ocupado:
             self.barra.start(12)
         else:
             self.barra.stop()
         if status:
             self.var_status.set(status)
+
+    # ------------------------------------------------------- conexao
+    def _atualizar_estado_captura(self):
+        """So deixa capturar quando o endereco atual respondeu ao *IDN?."""
+        bt = getattr(self, "bt_capturar", None)
+        if bt is not None:
+            bt.configure(state="normal"
+                         if self.conectado and not self.ocupado else "disabled")
+
+    def _marcar_conectado(self, idn):
+        self.conectado = True
+        self.lb_idn.configure(text=idn, foreground="green")
+        self._atualizar_estado_captura()
+
+    def _marcar_desconectado(self, texto="Nao conectado.", vermelho=False):
+        self.conectado = False
+        self.lb_idn.configure(text=texto, foreground="red" if vermelho else "gray")
+        self._atualizar_estado_captura()
 
     # -------------------------------------------------------- threading
     def _executar(self, funcao, tag, status):
@@ -281,33 +308,48 @@ class Aplicacao(ttk.Frame):
 
     def _fim_procura(self, ok, dados):
         if not ok:
+            self.cb_recurso["values"] = []
+            self._marcar_desconectado("Falha ao consultar o VISA.", vermelho=True)
             self.var_status.set("Nao foi possivel listar os instrumentos.")
             self.log("Falha ao listar instrumentos VISA. " + texto_do_erro(dados))
             return
-        self.cb_recurso["values"] = dados
-        if dados:
-            if self.var_recurso.get() not in dados:
-                self.var_recurso.set(dados[0])
-            self.var_status.set(f"{len(dados)} instrumento(s) encontrado(s).")
-            self.log("Instrumentos: " + ", ".join(dados))
-        else:
-            self.var_status.set("Nenhum instrumento VISA encontrado.")
-            self.log("Nenhum instrumento VISA encontrado.")
 
-    def testar_conexao(self):
+        self.cb_recurso["values"] = dados
+        if not dados:
+            # Sem instrumento presente o campo tem de ficar vazio: manter o
+            # endereco antigo na tela da a impressao de que ainda esta ligado.
+            self.var_recurso.set("")
+            self._marcar_desconectado("Nenhum instrumento conectado.")
+            self.var_status.set("Nenhum instrumento VISA encontrado.")
+            self.log("Nenhum instrumento VISA encontrado. Verifique o cabo USB.")
+            return
+
+        self.var_status.set(f"{len(dados)} instrumento(s) encontrado(s).")
+        self.log("Instrumentos: " + ", ".join(dados))
+        if self.var_recurso.get() not in dados:
+            self.var_recurso.set(dados[0])
+        # Estar na lista do VISA nao garante que responde: confirma com *IDN?.
+        self.testar_conexao()
+
+    def testar_conexao(self, avisar=False):
         recurso = self.var_recurso.get().strip()
+        if not recurso:
+            self._marcar_desconectado("Nenhum instrumento conectado.")
+            return
+        self._avisar_falha_teste = avisar
         self._executar(lambda: dsox_core.identificar(recurso), "teste",
                        "Consultando *IDN?...")
 
     def _fim_teste(self, ok, dados):
         if ok:
-            self.lb_idn.configure(text=dados, foreground="green")
+            self._marcar_conectado(dados)
             self.var_status.set("Conectado.")
             self.log("Conectado: " + dados)
-        else:
-            self.lb_idn.configure(text="Nao conectado.", foreground="red")
-            self.var_status.set("Falha na conexao.")
-            self.log(texto_do_erro(dados))
+            return
+        self._marcar_desconectado("Nao responde ao *IDN?.", vermelho=True)
+        self.var_status.set("Falha na conexao.")
+        self.log(texto_do_erro(dados))
+        if getattr(self, "_avisar_falha_teste", False):
             messagebox.showerror("Falha na conexao", texto_do_erro(dados))
 
     def escolher_pasta(self):
@@ -318,6 +360,9 @@ class Aplicacao(ttk.Frame):
 
     def capturar(self):
         if self.ocupado:
+            return
+        if not self.conectado:
+            self.var_status.set("Nenhum instrumento conectado. Clique em Procurar.")
             return
         recurso = self.var_recurso.get().strip()
         formato = self.var_formato.get()
@@ -332,6 +377,8 @@ class Aplicacao(ttk.Frame):
 
     def _fim_captura(self, ok, dados):
         if not ok:
+            self._marcar_desconectado("Conexao perdida durante a captura.",
+                                      vermelho=True)
             self.var_status.set("Falha na captura.")
             self.log(texto_do_erro(dados))
             messagebox.showerror("Falha na captura", texto_do_erro(dados))

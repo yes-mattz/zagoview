@@ -78,6 +78,36 @@ powershell "Get-PnpDevice | ? { $_.InstanceId -match 'VID_2A8D' } | fl Present, 
 `Present: False` significa que o Windows não enumerou o aparelho — cabo, porta
 ou a porta USB traseira (device) do osciloscópio, nada que o software resolva.
 
+## O que conta como "conectado"
+
+A lista do combo mostra só os endereços que **responderam ao `*IDN?`** na
+varredura — o VISA pode continuar anunciando um instrumento já desligado. Quem
+falha por estar ocupado (`RSRC_BUSY`/`RSRC_LOCKED`) permanece na lista: está
+conectado, só não pode atender agora.
+
+A validação abre cada endereço sem `viClear`, de propósito — a varredura passa
+por todos os instrumentos do PC e limpar a E/S de um aparelho em uso por outro
+programa abortaria a transferência dele.
+
+O botão **CAPTURAR** (e o F5) só ficam ativos enquanto o endereço que está no
+campo for o mesmo que respondeu ao `*IDN?`. Editar o endereço, perder a conexão
+durante uma captura ou não achar nada na varredura devolve a tela para "não
+conectado" e limpa o campo — assim ele nunca mostra um instrumento que não
+está mais lá.
+
+## Testes
+
+```bash
+python teste_nucleo.py
+```
+
+```bash
+python teste_interface.py
+```
+
+Rodam sem osciloscópio: o núcleo com sessões VISA simuladas, a interface
+percorrendo os estados de conexão em uma janela real.
+
 ## Observações
 
 - A prévia usa o Tk, que só exibe PNG. Em BMP a captura funciona normalmente,

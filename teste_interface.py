@@ -1,4 +1,9 @@
-"""Teste rapido da interface (nao precisa do osciloscopio)."""
+"""Teste da interface sem precisar do osciloscopio.
+
+Cobre a previa da imagem, o tratamento de erro e a maquina de estados da
+conexao: a tela so pode dizer "conectado" sobre um endereco que respondeu
+ao *IDN?.
+"""
 import os
 import struct
 import time
@@ -8,7 +13,7 @@ import zlib
 import gui_captura as G
 
 # evita caixas de dialogo modais no teste automatico
-G.messagebox.showerror = lambda *a, **k: print('DIALOGO ERRO:', a[0])
+G.messagebox.showerror = lambda *a, **k: print("DIALOGO ERRO:", a[0])
 G.messagebox.showwarning = lambda *a, **k: None
 
 
@@ -29,25 +34,88 @@ def gerar_png(path, w=1280, h=768):
                 + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
 
 
+def checar(descricao, obtido, esperado):
+    ok = obtido == esperado
+    print(("  ok  " if ok else "FALHOU") + f"  {descricao}: {obtido!r}")
+    assert ok, f"{descricao}: esperado {esperado!r}, obtido {obtido!r}"
+
+
 destino = os.path.join(os.environ["TEMP"], "teste_previa.png")
 gerar_png(destino)
 
+def bombear(limite=15.0):
+    """Roda o loop do Tk ate a operacao em andamento terminar.
+
+    update() so despacha os callbacks de after() que ja venceram; sem isso a
+    varredura inicial ficaria eternamente marcada como em andamento.
+    """
+    fim = time.time() + limite
+    while time.time() < fim:
+        raiz.update()
+        if not app.ocupado:
+            return
+        time.sleep(0.05)
+    raise AssertionError("operacao nao terminou em %.0fs" % limite)
+
+
 raiz = tk.Tk()
 app = G.Aplicacao(raiz)
-raiz.update()
-time.sleep(1.5)          # deixa a busca VISA falhar em segundo plano
-raiz.update()
+bombear()                # deixa a busca VISA inicial terminar
 
+print("\n[1] varredura sem nenhum instrumento presente")
+app._fim_procura(True, [])
+raiz.update()
+checar("endereco VISA fica vazio", app.var_recurso.get(), "")
+checar("rotulo", app.lb_idn["text"], "Nenhum instrumento conectado.")
+checar("lista do combo", app.cb_recurso["values"], "")
+checar("CAPTURAR desabilitado", str(app.bt_capturar["state"]), "disabled")
+
+print("\n[2] F5 nao captura sem instrumento")
+app.capturar()
+raiz.update()
+checar("status", app.var_status.get(),
+       "Nenhum instrumento conectado. Clique em Procurar.")
+
+print("\n[3] instrumento encontrado, mas ainda sem responder ao *IDN?")
+app._fim_procura(True, ["USB0::0x2A8D::0x1766::MY55280502::0::INSTR"])
+raiz.update()
+checar("endereco preenchido", app.var_recurso.get(),
+       "USB0::0x2A8D::0x1766::MY55280502::0::INSTR")
+checar("ainda nao confirmado", app.conectado, False)
+checar("CAPTURAR ainda desabilitado", str(app.bt_capturar["state"]), "disabled")
+# a varredura dispara o *IDN? sozinha; aqui ele falha (sem instrumento) e
+# nao pode abrir caixa de dialogo, porque ninguem clicou em nada
+bombear()
+checar("estar na lista nao basta", app.lb_idn["text"], "Nao responde ao *IDN?.")
+checar("sem confirmar", app.conectado, False)
+
+print("\n[4] *IDN? respondeu")
+app._fim_teste(True, "KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY55280502,07.30")
+raiz.update()
+checar("conectado", app.conectado, True)
+checar("rotulo verde", str(app.lb_idn["foreground"]), "green")
+checar("CAPTURAR liberado", str(app.bt_capturar["state"]), "normal")
+
+print("\n[5] captura com sucesso")
 app._fim_captura(True, (destino, 123456))
 raiz.update()
-print("previa:", app.imagem_tk.width(), "x", app.imagem_tk.height())
-print("botoes:", app.bt_abrir_img["state"], app.bt_copiar["state"])
-print("proximo:", app.lb_exemplo["text"])
-print("status:", app.var_status.get())
+checar("previa 1280x768 reduzida", (app.imagem_tk.width(), app.imagem_tk.height()),
+       (427, 256))
+checar("botao abrir imagem", str(app.bt_abrir_img["state"]), "normal")
 
+print("\n[6] cabo arrancado no meio da captura")
 app._fim_captura(False, PermissionError(13, "negado", destino))
 raiz.update()
-print("erro tratado ->", app.var_status.get())
-print("log:\n" + app.txt_log.get("1.0", "end").strip())
+checar("marcado como desconectado", app.conectado, False)
+checar("rotulo", app.lb_idn["text"], "Conexao perdida durante a captura.")
+checar("CAPTURAR bloqueado de novo", str(app.bt_capturar["state"]), "disabled")
+
+print("\n[7] editar o endereco na mao invalida a conexao")
+app._marcar_conectado("KEYSIGHT,DSO-X 3024T,MY55280502,07.30")
+app.var_recurso.set("TCPIP0::192.168.0.10::inst0::INSTR")
+raiz.update()
+checar("volta para nao verificado", app.lb_idn["text"], "Nao verificado.")
+checar("CAPTURAR bloqueado", str(app.bt_capturar["state"]), "disabled")
+
 raiz.destroy()
-print("SMOKE OK")
+print("\nTODOS OS TESTES PASSARAM")
