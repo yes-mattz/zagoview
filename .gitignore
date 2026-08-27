@@ -11,6 +11,10 @@ dist/
 Capturas_DSOX/
 *.bmp
 
+# Instalador do VISA: binario de terceiro, 61 MB. Fica de fora do
+# repositorio e e colocado aqui a mao antes de gerar o executavel.
+visa/
+
 # Editor
 .vscode/
 .idea/

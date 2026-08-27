@@ -11,6 +11,7 @@ Toda a comunicacao com o instrumento fica em instrumento.py.
 """
 
 import contextlib
+import glob
 import json
 import os
 import queue
@@ -108,6 +109,24 @@ def converter_para_png(origem):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     return destino
+
+
+def achar_instalador_visa():
+    """Procura o instalador do VISA que acompanha o programa.
+
+    Empacotado, ele vem dentro do executavel (PASTA_APP aponta para a pasta
+    de extracao). Rodando como script, fica em visa/ ao lado do codigo. Como
+    o nome traz a versao, procura por padrao em vez de nome fixo.
+    """
+    for pasta in (os.path.join(PASTA_APP, "visa"), PASTA_APP,
+                  os.path.dirname(sys.executable)):
+        try:
+            achados = sorted(glob.glob(os.path.join(pasta, "RS_VISA_Setup*.exe")))
+        except OSError:
+            continue
+        if achados:
+            return achados[-1]          # o de versao mais alta
+    return None
 
 
 def texto_do_erro(e):
@@ -358,6 +377,14 @@ class Aplicacao(ttk.Frame):
     def _fim_procura(self, ok, dados):
         if not ok:
             self.cb_recurso["values"] = []
+            if isinstance(dados, instrumento.VisaAusente):
+                # Sem VISA nao ha o que procurar, e mandar conferir o cabo
+                # seria enganoso: o que falta e a biblioteca, nao o aparelho.
+                self._marcar_desconectado("VISA nao instalado.", vermelho=True)
+                self.var_status.set("Nenhuma implementacao VISA encontrada.")
+                self.log("VISA ausente: " + str(dados).splitlines()[0])
+                self._oferecer_visa()
+                return
             self._marcar_desconectado("Falha ao consultar o VISA.", vermelho=True)
             self.var_status.set("Nao foi possivel listar os instrumentos.")
             self.log("Falha ao listar instrumentos VISA. " + texto_do_erro(dados))
@@ -378,6 +405,48 @@ class Aplicacao(ttk.Frame):
             self.var_recurso.set(dados[0])
         # Estar na lista do VISA nao garante que responde: confirma com *IDN?.
         self.testar_conexao()
+
+    def _oferecer_visa(self):
+        """Pergunta se o operador quer instalar o VISA que veio junto.
+
+        O programa fala com o despachante neutro da IVI Foundation, entao
+        qualquer implementacao serve; o R&S acompanha o pacote por ser a
+        menor. Quem ja tiver Keysight IO Libraries ou NI-VISA nao ve isto.
+        """
+        instalador = achar_instalador_visa()
+        if instalador is None:
+            messagebox.showerror(
+                "VISA nao instalado",
+                "Nenhuma implementacao VISA foi encontrada nesta maquina, e o\n"
+                "instalador nao veio junto do programa.\n\n"
+                "Instale uma destas e abra o programa de novo:\n"
+                "  - R&S VISA (a menor)\n"
+                "  - Keysight IO Libraries Suite\n"
+                "  - NI-VISA")
+            return
+
+        tamanho = os.path.getsize(instalador) / (1024 * 1024)
+        if not messagebox.askyesno(
+                "VISA nao instalado",
+                "Para falar com o instrumento e preciso uma implementacao VISA,\n"
+                "e nenhuma foi encontrada nesta maquina.\n\n"
+                f"Instalar o R&S VISA agora? ({tamanho:.0f} MB, incluso no "
+                "programa)\n\n"
+                "A instalacao pede permissao de administrador. Ao terminar,\n"
+                "clique em Procurar de novo."):
+            self.log("Instalacao do VISA recusada pelo operador.")
+            return
+
+        try:
+            abrir_no_windows(instalador)
+            self.var_status.set("Instalador do VISA aberto. Ao terminar, "
+                                "clique em Procurar.")
+            self.log(f"Instalador aberto: {instalador}")
+        except OSError as e:
+            self.log(f"Nao foi possivel abrir o instalador: {e}")
+            messagebox.showerror(
+                "Instalador",
+                f"Nao foi possivel abrir o instalador:\n{instalador}\n\n{e}")
 
     def testar_conexao(self, avisar=False):
         recurso = self.var_recurso.get().strip()

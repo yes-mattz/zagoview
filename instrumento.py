@@ -88,6 +88,15 @@ _trava = threading.RLock()
 _gerenciador = None
 
 
+class VisaAusente(RuntimeError):
+    """Nao ha implementacao VISA utilizavel nesta maquina.
+
+    E diferente de "nenhum instrumento encontrado": sem VISA nao existe nem
+    como procurar, e a saida e instalar uma implementacao - qualquer uma que
+    siga o padrao IVI.
+    """
+
+
 def gerenciador():
     """Devolve o ResourceManager unico do processo, criando-o se preciso."""
     global _gerenciador
@@ -98,8 +107,21 @@ def gerenciador():
             except pyvisa.errors.InvalidSession:
                 _gerenciador = None
         if _gerenciador is None:
-            _gerenciador = pyvisa.ResourceManager()
+            _gerenciador = _abrir_gerenciador()
         return _gerenciador
+
+
+def _abrir_gerenciador():
+    """Abre o ResourceManager, traduzindo a falta de VISA num erro proprio."""
+    try:
+        return pyvisa.ResourceManager()
+    except pyvisa.errors.VisaIOError as e:
+        if e.error_code == constants.StatusCode.error_library_not_found:
+            raise VisaAusente(str(e)) from e
+        raise
+    except OSError as e:
+        # LibraryError herda de OSError; e o que sai quando nao ha DLL alguma.
+        raise VisaAusente(str(e)) from e
 
 
 def reiniciar():

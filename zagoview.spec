@@ -1,9 +1,18 @@
 # Receita do executavel. Gera um arquivo unico:
 #     pyinstaller zagoview.spec
 #
-# O VISA nao vai dentro: o programa fala com o visa32.dll que a implementacao
-# do fabricante (Keysight IO Libraries, NI-VISA) instala no Windows. O
-# executavel dispensa Python e pyvisa na maquina de destino, nao o VISA.
+# O programa fala com o despachante visa32.dll da IVI Foundation, que roteia
+# para a implementacao instalada - Keysight, NI, R&S, tanto faz. Nenhuma delas
+# vai embutida como biblioteca.
+#
+# O que vai junto e o INSTALADOR do R&S VISA, para a maquina que nao tem
+# nenhuma: a janela oferece instala-lo quando a varredura descobre que falta
+# VISA. Coloque o RS_VISA_Setup_*.exe em visa/ antes de compilar; sem ele o
+# executavel sai menor e a janela apenas explica o que instalar.
+import glob
+
+instalador_visa = [(p, "visa") for p in glob.glob("visa/RS_VISA_Setup*.exe")]
+print("instalador do VISA embutido:", instalador_visa or "nenhum")
 
 a = Analysis(
     ["gui_captura.py"],
@@ -15,7 +24,7 @@ a = Analysis(
            ("assets/icone-z-16.png", "assets"),
            ("assets/icone-z-32.png", "assets"),
            ("assets/icone-z-48.png", "assets"),
-           ("assets/icone-z-64.png", "assets")],
+           ("assets/icone-z-64.png", "assets")] + instalador_visa,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

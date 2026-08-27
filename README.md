@@ -54,24 +54,38 @@ Para distribuir a quem não tem Python instalado:
 pyinstaller zagoview.spec
 ```
 
-Sai um `dist/Zagoview.exe` de ~13 MB, arquivo único, com a logo e os ícones
-embutidos. A receita está em `zagoview.spec`.
+Antes de compilar, coloque o instalador do R&S VISA em `visa/` — ele **não
+está no repositório**, por ser binário de terceiro de 61 MB:
 
-**O VISA não vai dentro.** O programa fala com o `visa32.dll` que a
-implementação do fabricante instala no Windows, e essa biblioteca não é nossa
-para redistribuir. Ou seja: o executável dispensa Python e pyvisa na máquina de
-destino, **não** o Keysight IO Libraries (ou NI-VISA). Qualquer PC que já
-converse com os instrumentos tem isso instalado; um que nunca usou, não.
+```
+visa/RS_VISA_Setup_Win_7_2_6.exe
+```
+
+Sai um `dist/Zagoview.exe` de ~48 MB, arquivo único, com a logo, os ícones e o
+instalador do VISA dentro. Sem o instalador em `visa/`, o executável sai com
+~13 MB e a janela apenas explica o que instalar, em vez de oferecer.
+
+Medido: a janela abre em **0,7–0,9 s**, apesar da descompactação.
+
+**A biblioteca VISA não vai dentro** — só o instalador dela. O programa fala
+com o despachante `visa32.dll` da IVI Foundation, que roteia para a
+implementação instalada na máquina. Nenhuma implementação é embutida, e
+nenhuma é exigida em particular.
 
 Por ser arquivo único, cada abertura descompacta o conteúdo numa pasta
-temporária — daí o pequeno atraso no primeiro clique. Por isso o código procura
-os arquivos de apoio em `sys._MEIPASS` quando existe, e ao lado do `.py` quando
-roda como script.
+temporária. Por isso o código procura os arquivos de apoio em `sys._MEIPASS`
+quando existe, e ao lado do `.py` quando roda como script.
 
 ## Requisitos
 
-- Uma implementação VISA: Keysight IO Libraries, NI-VISA ou a do fabricante
-  do seu instrumento (é ela que fornece o driver)
+- Uma implementação VISA qualquer, compatível com o padrão IVI:
+  **R&S VISA** (61 MB, a menor), Keysight IO Libraries (462 MB), NI-VISA ou a
+  do fabricante do seu instrumento — é ela que fornece o driver.
+  Instale **apenas uma**: duas implementações disputam o mesmo instrumento USB
+  e o mesmo aparelho passa a aparecer duas vezes na lista, com nomes
+  diferentes (`...::SERIE::INSTR` e `...::SERIE::0::INSTR`).
+- Se nenhuma estiver instalada, a janela detecta e oferece instalar o R&S VISA
+  que acompanha o executável.
 - `pip install -r requirements.txt`
 
 Tkinter já vem com o Python no Windows — não há dependência extra para a interface.
