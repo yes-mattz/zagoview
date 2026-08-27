@@ -47,6 +47,10 @@ LOGO = os.path.join(PASTA_APP, "assets", "logo-zagonel-verde.png")
 ICONES = [os.path.join(PASTA_APP, "assets", f"icone-z-{n}.png")
           for n in (16, 32, 48, 64)]
 VERDE = "#128c4f"          # verde de acao da marca Zagonel
+# Cores do botao Run/Stop, na convencao do painel do instrumento.
+VERDE_RUN = "#1e8e3e"
+VERMELHO_STOP = "#c5221f"
+CINZA_BOTAO = "#e0e0e0"
 CINZA_TEXTO = "#5a5a5a"
 
 
@@ -158,6 +162,7 @@ class Aplicacao(ttk.Frame):
         self.conectado = False
         self.ultimo_arquivo = None
         self.imagem_tk = None
+        self.rodando = None        # None ate saber o estado do instrumento
 
         self.var_recurso = tk.StringVar(
             value=cfg.get("recurso", instrumento.RECURSO_PADRAO))
@@ -253,15 +258,22 @@ class Aplicacao(ttk.Frame):
 
         self.bt_capturar = ttk.Button(g, text="CAPTURAR  (F5)", command=self.capturar)
         self.bt_capturar.grid(row=0, column=0, sticky="ew", ipady=8)
+        # tk.Button classico, e nao ttk: o tema do Windows ignora cor de fundo
+        # em botao ttk, e a cor e justamente o que este botao comunica.
+        self.bt_run = tk.Button(g, text="Rodando", width=11, relief="raised",
+                                font=("Segoe UI", 9, "bold"),
+                                state="disabled", command=self.alternar_run)
+        self.bt_run.grid(row=0, column=1, padx=(8, 0), sticky="ns")
         self.bt_abrir_img = ttk.Button(g, text="Abrir imagem", width=14,
                                        state="disabled", command=self.abrir_imagem)
-        self.bt_abrir_img.grid(row=0, column=1, padx=(8, 0))
+        self.bt_abrir_img.grid(row=0, column=2, padx=(8, 0))
         self.bt_copiar = ttk.Button(g, text="Copiar", width=10,
                                     state="disabled", command=self.copiar)
-        self.bt_copiar.grid(row=0, column=2, padx=(8, 0))
+        self.bt_copiar.grid(row=0, column=3, padx=(8, 0))
         self.bt_abrir_pasta = ttk.Button(g, text="Abrir pasta", width=12,
                                          command=self.abrir_pasta)
-        self.bt_abrir_pasta.grid(row=0, column=3, padx=(8, 0))
+        self.bt_abrir_pasta.grid(row=0, column=4, padx=(8, 0))
+        self._pintar_run()
 
         self.barra = ttk.Progressbar(self, mode="indeterminate")
         self.barra.grid(row=4, column=0, sticky="ew", pady=(8, 0))
@@ -311,6 +323,7 @@ class Aplicacao(ttk.Frame):
         for b in (self.bt_testar, self.bt_procurar):
             b.configure(state=estado)
         self._atualizar_estado_captura()
+        self._pintar_run()
         if ocupado:
             self.barra.start(12)
         else:
@@ -330,9 +343,14 @@ class Aplicacao(ttk.Frame):
         self.conectado = True
         self.lb_idn.configure(text=idn, foreground="green")
         self._atualizar_estado_captura()
+        recurso = self.var_recurso.get().strip()
+        self._executar(lambda: instrumento.estado_aquisicao(recurso), "estado",
+                       "Lendo o estado da aquisicao...")
 
     def _marcar_desconectado(self, texto="Nao conectado.", vermelho=False):
         self.conectado = False
+        self.rodando = None
+        self._pintar_run()
         self.lb_idn.configure(text=texto, foreground="red" if vermelho else "gray")
         self._atualizar_estado_captura()
 
@@ -405,6 +423,60 @@ class Aplicacao(ttk.Frame):
             self.var_recurso.set(dados[0])
         # Estar na lista do VISA nao garante que responde: confirma com *IDN?.
         self.testar_conexao()
+
+    # ------------------------------------------------- aquisicao (Run/Stop)
+    def _pintar_run(self):
+        """Verde rodando, vermelho parado - a mesma convencao do painel do
+        instrumento, onde a tecla Run/Stop acende nessas duas cores."""
+        if getattr(self, "bt_run", None) is None:
+            return                     # ainda montando a janela
+        if not self.conectado or self.rodando is None:
+            self.bt_run.configure(text="Run/Stop", bg=CINZA_BOTAO,
+                                  fg="black", activebackground=CINZA_BOTAO,
+                                  state="disabled")
+            return
+        if self.rodando:
+            cor, texto = VERDE_RUN, "Rodando"
+        else:
+            cor, texto = VERMELHO_STOP, "Parado"
+        self.bt_run.configure(text=texto, bg=cor, fg="white",
+                              activebackground=cor, activeforeground="white",
+                              state="disabled" if self.ocupado else "normal")
+
+    def alternar_run(self):
+        if self.ocupado or not self.conectado or self.rodando is None:
+            return
+        recurso = self.var_recurso.get().strip()
+        rodando = self.rodando
+        self._executar(lambda: instrumento.run_stop(recurso, rodando), "run",
+                       "Parando a aquisicao..." if rodando
+                       else "Retomando a aquisicao...")
+
+    def _fim_run(self, ok, dados):
+        if not ok:
+            self.log("Falha ao alternar a aquisicao. " + texto_do_erro(dados))
+            self.var_status.set("Nao foi possivel alternar a aquisicao.")
+            self._pintar_run()
+            return
+        self.rodando = dados
+        self.var_status.set("Aquisicao em andamento." if dados
+                            else "Aquisicao parada.")
+        self.log(":RUN" if dados else ":STOP")
+        self._pintar_run()
+
+    def _fim_estado(self, ok, dados):
+        """Estado lido do instrumento ao conectar.
+
+        Ha aparelho que nao sabe responder - o DSO-X 3024T deste firmware e um
+        deles. Nesse caso assume-se rodando, que e como um instrumento fica
+        quando ninguem mexeu nele, e o botao passa a acompanhar os comandos
+        que ele proprio manda.
+        """
+        self.rodando = dados if ok and dados is not None else True
+        if not (ok and dados is not None):
+            self.log("O instrumento nao informa o estado da aquisicao; "
+                     "assumindo que esta rodando.")
+        self._pintar_run()
 
     def _oferecer_visa(self):
         """Pergunta se o operador quer instalar o VISA que veio junto.

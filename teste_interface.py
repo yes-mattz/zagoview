@@ -29,6 +29,9 @@ def _sem_instrumento(*_a, **_k):
 # o teste simula a ausencia de hardware e injeta as respostas ele mesmo.
 G.instrumento.listar_recursos = lambda *a, **k: []
 G.instrumento.identificar = _sem_instrumento
+# Conectar dispara a leitura do estado da aquisicao; sem simular, o teste
+# sairia falando com o instrumento de verdade.
+G.instrumento.estado_aquisicao = lambda *a, **k: None
 
 
 def gerar_png(path, w=1280, h=768):
@@ -105,7 +108,7 @@ checar("sem confirmar", app.conectado, False)
 
 print("\n[4] *IDN? respondeu")
 app._fim_teste(True, "KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY55280502,07.30")
-raiz.update()
+bombear()          # conectar dispara a leitura do estado da aquisicao
 checar("conectado", app.conectado, True)
 checar("rotulo verde", str(app.lb_idn["foreground"]), "green")
 checar("CAPTURAR liberado", str(app.bt_capturar["state"]), "normal")
@@ -138,6 +141,41 @@ app.var_recurso.set("TCPIP0::192.168.0.10::inst0::INSTR")
 raiz.update()
 checar("volta para nao verificado", app.lb_idn["text"], "Nao verificado.")
 checar("CAPTURAR bloqueado", str(app.bt_capturar["state"]), "disabled")
+
+print("\n[9] o botao Run/Stop mostra o estado pela cor")
+app._marcar_conectado("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY5528,07.30")
+raiz.update()
+checar("desconhecido: cinza e travado", (app.bt_run["text"],
+       str(app.bt_run["state"])), ("Run/Stop", "disabled"))
+
+# instrumento que nao sabe informar o estado: assume-se rodando
+app._fim_estado(True, None)
+raiz.update()
+checar("assume rodando", app.rodando, True)
+checar("verde", (app.bt_run["text"], app.bt_run["bg"]), ("Rodando", G.VERDE_RUN))
+
+app._fim_run(True, False)
+raiz.update()
+checar("apos parar, vermelho", (app.bt_run["text"], app.bt_run["bg"]),
+       ("Parado", G.VERMELHO_STOP))
+
+app._fim_run(True, True)
+raiz.update()
+checar("apos rodar, verde de novo", (app.bt_run["text"], app.bt_run["bg"]),
+       ("Rodando", G.VERDE_RUN))
+
+# instrumento que sabe informar
+app._fim_estado(True, False)
+raiz.update()
+checar("estado lido do aparelho", (app.bt_run["text"], app.bt_run["bg"]),
+       ("Parado", G.VERMELHO_STOP))
+
+print("\n[10] perder a conexao apaga o botao")
+app._marcar_desconectado("Dispositivo desconectado.", vermelho=True)
+raiz.update()
+checar("volta a cinza", (app.bt_run["text"], str(app.bt_run["state"])),
+       ("Run/Stop", "disabled"))
+checar("estado esquecido", app.rodando, None)
 
 raiz.destroy()
 print("\nTODOS OS TESTES PASSARAM")

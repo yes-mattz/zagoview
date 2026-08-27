@@ -52,11 +52,21 @@ DIALETOS = {
         "formatos": ["PNG", "BMP", "BMP8bit"],
         "inksaver": True,
         "comando": lambda formato, paleta: f":DISPlay:DATA? {formato},{paleta}",
+        # O :RSTate? existe na documentacao da serie, mas nao responde no
+        # DSO-X 3024T com firmware 04.06.2015 - nem o :OPERegister:CONDition?
+        # muda entre rodando e parado. Por isso a consulta fica vazia.
+        "aquisicao": {"rodar": ":RUN", "parar": ":STOP", "consulta": None},
     },
     "rigol": {
         "formatos": ["BMP"],
         "inksaver": False,
         "comando": lambda formato, paleta: ":PRIV:SNAP? BMP",
+        # A serie DSA800 nao tem :RUN; a aquisicao liga e desliga pelo
+        # :INITiate:CONTinuous, que ainda por cima sabe informar o estado.
+        # Conferido no manual de programacao; falta testar no aparelho.
+        "aquisicao": {"rodar": ":INITiate:CONTinuous ON",
+                      "parar": ":INITiate:CONTinuous OFF",
+                      "consulta": ":INITiate:CONTinuous?"},
     },
 }
 # Agilent e o nome antigo da Keysight, e os aparelhos falam o mesmo dialeto.
@@ -249,6 +259,48 @@ def identificar(recurso, timeout=5000):
             return scope.query("*IDN?").strip()
 
     return _com_retentativa(consulta)
+
+
+def run_stop(recurso, rodando, timeout=5000):
+    """Alterna a aquisicao e devolve o novo estado.
+
+    O comando muda com o fabricante: o Keysight usa :RUN/:STOP, e o Rigol da
+    serie DSA800 nao tem :RUN - a aquisicao dele liga e desliga por
+    :INITiate:CONTinuous.
+    """
+    def acao():
+        with sessao(recurso, timeout) as scope:
+            aquisicao = DIALETOS[familia(scope.query("*IDN?").strip())]["aquisicao"]
+            scope.write(aquisicao["parar"] if rodando else aquisicao["rodar"])
+        return not rodando
+
+    return _com_retentativa(acao)
+
+
+def estado_aquisicao(recurso, timeout=3000):
+    """Pergunta ao instrumento se esta adquirindo. None = ele nao sabe dizer.
+
+    Nem todo aparelho responde: no DSO-X 3024T com firmware 04.06.2015 o
+    :RSTate? nao existe, e nenhum outro registrador distingue rodando de
+    parado. Nesse caso quem chama assume um estado e acompanha os comandos
+    que ele proprio manda.
+    """
+    def consulta():
+        with sessao(recurso, timeout) as scope:
+            pergunta = DIALETOS[familia(scope.query("*IDN?").strip())]["aquisicao"]
+            if not pergunta["consulta"]:
+                return None
+            resposta = scope.query(pergunta["consulta"]).strip().upper()
+            if resposta in ("1", "+1", "ON", "RUN"):
+                return True
+            if resposta in ("0", "+0", "OFF", "STOP"):
+                return False
+            return None
+
+    try:
+        return _com_retentativa(consulta)
+    except Exception:
+        return None            # sem resposta e um estado valido: desconhecido
 
 
 def familia(idn):

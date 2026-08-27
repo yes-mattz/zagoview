@@ -16,12 +16,15 @@ class FalsoScope:
         self.resposta = resposta
         self.excecao = excecao
         self.comandos = []
+        # Resposta por comando: sem isto, mudar a resposta para simular o
+        # estado da aquisicao tambem mudaria o *IDN?, e o dialeto sairia errado.
+        self.respostas = {}
 
     def query(self, cmd):
         self.comandos.append(cmd)
         if self.excecao:
             raise self.excecao
-        return self.resposta
+        return self.respostas.get(cmd, self.resposta)
 
     def write(self, cmd):
         self.comandos.append(cmd)
@@ -116,7 +119,32 @@ checar("pedir PNG a um Rigol nao manda INKSaver",
        [c for c in RIGOL.comandos if "INKSaver" in c], [])
 checar("assinatura reconhecida", instrumento.formato_dos_dados(dados), "BMP")
 
-print("\n[6] a extensao segue o que o aparelho entregou, nao o que foi pedido")
+print("\n[7] Run/Stop usa o comando de cada fabricante")
+checar("novo estado apos RUN", instrumento.run_stop("key", False), True)
+checar("Keysight roda com :RUN", KEYSIGHT.comandos[-1], ":RUN")
+checar("novo estado apos STOP", instrumento.run_stop("key", True), False)
+checar("Keysight para com :STOP", KEYSIGHT.comandos[-1], ":STOP")
+
+# O DSA800 nao tem :RUN; a aquisicao dele e :INITiate:CONTinuous.
+instrumento.run_stop("rig", False)
+checar("Rigol roda com INIT:CONT", RIGOL.comandos[-1], ":INITiate:CONTinuous ON")
+instrumento.run_stop("rig", True)
+checar("Rigol para com INIT:CONT", RIGOL.comandos[-1], ":INITiate:CONTinuous OFF")
+
+print("\n[7b] estado da aquisicao: quem sabe responder, e quem nao sabe")
+RIGOL.respostas[":INITiate:CONTinuous?"] = "1"
+checar("Rigol diz que esta rodando", instrumento.estado_aquisicao("rig"), True)
+RIGOL.respostas[":INITiate:CONTinuous?"] = "0"
+checar("Rigol diz que esta parado", instrumento.estado_aquisicao("rig"), False)
+RIGOL.respostas[":INITiate:CONTinuous?"] = "lixo"
+checar("resposta ininteligivel vira desconhecido",
+       instrumento.estado_aquisicao("rig"), None)
+# O Keysight deste firmware nao tem consulta: o dialeto traz None.
+checar("Keysight nao sabe informar", instrumento.estado_aquisicao("key"), None)
+checar("e nem chega a perguntar",
+       [c for c in KEYSIGHT.comandos if "CONT" in c or "RSTate" in c], [])
+
+print("\n[8] a extensao segue o que o aparelho entregou, nao o que foi pedido")
 checar("BMP salvo como .png vira .bmp",
        instrumento.ajustar_extensao(r"C:\medidas\tela.png", b"BM" + b"0" * 40),
        r"C:\medidas\tela.bmp")

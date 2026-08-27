@@ -102,6 +102,13 @@ Ou duplo clique em `Zagoview.bat`.
 - **Pasta** e **Prefixo** definem o destino; o nome recebe data/hora automaticamente
   (`tela_20260826_083547.png`) — a linha "Próximo arquivo" mostra como vai ficar.
 - **CAPTURAR** (ou F5) faz a leitura em segundo plano, salva e exibe a prévia.
+- O botão ao lado alterna a aquisição e mostra o estado pela cor: **verde
+  "Rodando"**, **vermelho "Parado"** — a mesma convenção da tecla Run/Stop do
+  painel do instrumento. Nem todo aparelho sabe informar o estado: no DSO-X
+  3024T com firmware 04.06.2015 o `:RSTate?` não responde e nenhum outro
+  registrador distingue os dois casos, então assume-se "rodando" ao conectar e
+  o botão passa a acompanhar os comandos que ele mesmo manda.
+- **RUN/STOP** alterna a aquisição do osciloscópio pelo comando SCPI correspondente.
 - **Copiar** joga a última imagem na área de transferência (colar direto no relatório).
 - As preferências ficam em `%USERPROFILE%\.zagoview.json` e voltam na próxima abertura.
   O arquivo antigo, `.captura_dsox.json`, ainda é lido se o novo não existir.
@@ -158,10 +165,13 @@ Cada fabricante entrega a imagem da tela de um jeito. O núcleo lê o fabricante
 no `*IDN?` e escolhe o comando; o que não for reconhecido cai no dialeto
 Keysight.
 
-| Fabricante | Comando | Formatos | Observação |
+| Fabricante | Captura | Formatos | Aquisição |
 |---|---|---|---|
-| Keysight / Agilent | `:DISPlay:DATA? <formato>,<paleta>` | PNG, BMP, BMP8bit | aceita INKSaver e escala de cinza |
-| Rigol | `:PRIV:SNAP? BMP` | BMP | ~1,1 MB, ~4,4 s por captura |
+| Keysight / Agilent | `:DISPlay:DATA? <formato>,<paleta>` | PNG, BMP, BMP8bit | `:RUN` / `:STOP` |
+| Rigol | `:PRIV:SNAP? BMP` | BMP | `:INITiate:CONTinuous ON\|OFF` |
+
+O Rigol da série DSA800 **não tem `:RUN`** — a aquisição dele liga e desliga
+pelo `:INITiate:CONTinuous`, que em compensação sabe informar o estado atual.
 
 O formato escolhido na janela é uma **preferência**: se o aparelho não souber
 produzi-lo, vale o que ele entrega, e a extensão do arquivo é corrigida pela
