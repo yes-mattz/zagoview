@@ -29,7 +29,7 @@ import pyvisa
 import instrumento
 
 NOME = "Zagoview"
-VERSAO = "1.2.1"
+VERSAO = "1.2.2"
 DESCRICAO = "Captura a tela de instrumentos SCPI via VISA"
 AUTOR = "Mateus Von Grafen"
 EMAIL = "mtmateus0@gmail.com"
