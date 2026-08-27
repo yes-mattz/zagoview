@@ -576,7 +576,7 @@ class Aplicacao(ttk.Frame):
                                             formato)
         self._executar(
             lambda: instrumento.capturar(recurso, destino, formato, paleta, inksaver),
-            "captura", "Capturando a tela do osciloscopio...")
+            "captura", "Executando...")
 
     def _fim_captura(self, ok, dados):
         if not ok:
