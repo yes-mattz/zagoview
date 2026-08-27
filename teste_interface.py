@@ -33,6 +33,13 @@ G.instrumento.identificar = _sem_instrumento
 # sairia falando com o instrumento de verdade.
 G.instrumento.estado_aquisicao = lambda *a, **k: None
 
+# O teste comeca sempre dos padroes: lendo o ~/.zagoview.json de quem roda,
+# o resultado mudaria conforme as preferencias da pessoa - foi o que
+# aconteceu quando "copiar" estava desligado nesta maquina. E nao gravar
+# nada, para nao mexer nas preferencias de ninguem.
+G.carregar_config = lambda: {}
+G.salvar_config = lambda dados: None
+
 
 def gerar_png(path, w=1280, h=768):
     raw = bytearray()
@@ -75,9 +82,23 @@ def bombear(limite=15.0):
     raise AssertionError("operacao nao terminou em %.0fs" % limite)
 
 
+def esperar_ate(condicao, limite=5.0):
+    fim = time.time() + limite
+    while time.time() < fim:
+        raiz.update()
+        if condicao():
+            return True
+        time.sleep(0.02)
+    return False
+
+
 raiz = tk.Tk()
 app = G.Aplicacao(raiz)
-bombear()                # deixa a busca VISA inicial terminar
+# A varredura inicial e agendada com after(300): esperar so por "ocupado"
+# sairia antes de ela comecar, e o resultado dela cairia no meio de um teste
+# posterior, zerando o estado da conexao. Espera comecar, depois terminar.
+esperar_ate(lambda: app.ocupado)
+bombear()
 
 print("\n[1] varredura sem nenhum instrumento presente")
 app._fim_procura(True, [])

@@ -111,6 +111,9 @@ Ou duplo clique em `Zagoview.bat`.
   o botão passa a acompanhar os comandos que ele mesmo manda.
 - **RUN/STOP** alterna a aquisição do osciloscópio pelo comando SCPI correspondente.
 - **Copiar** joga a última imagem na área de transferência (colar direto no relatório).
+- **Ajuda**, no canto do cabeçalho, abre uma caixa com o passo a passo, o que
+  fazer quando o instrumento não aparece, a autoria e o contato — com um botão
+  que copia o e-mail.
 - As preferências ficam em `%USERPROFILE%\.zagoview.json` e voltam na próxima abertura.
   O arquivo antigo, `.captura_dsox.json`, ainda é lido se o novo não existir.
 
@@ -219,6 +222,14 @@ com o `*IDN?` de cada um, uma sondagem serial (cinco velocidades × dois fins de
 linha) e o hash do `Zagoview.exe` usado.
 
 Não precisa de Python nem de administrador, e só lê — não altera nada.
+
+## Autoria
+
+Zagoview foi escrito por **Mateus Von Grafen** (mtmateus0@gmail.com).
+
+O nome e o contato aparecem na caixa **Ajuda** do programa e no cabeçalho deste
+arquivo. A versão fica em `VERSAO`, no `gui_captura.py`, e é mostrada no título
+da janela e na caixa de ajuda.
 
 ## Testes
 

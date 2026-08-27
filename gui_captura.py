@@ -28,6 +28,44 @@ import pyvisa
 
 import instrumento
 
+NOME = "Zagoview"
+VERSAO = "1.2.1"
+DESCRICAO = "Captura a tela de instrumentos SCPI via VISA"
+AUTOR = "Mateus Von Grafen"
+EMAIL = "mtmateus0@gmail.com"
+
+AJUDA = """
+COMO USAR
+
+1. Ligue o instrumento e conecte o cabo (USB ou rede).
+2. Clique em Procurar. O endereco aparece na lista e a linha verde mostra
+   o modelo que respondeu.
+3. Escolha a pasta e o prefixo do arquivo em Destino.
+4. Clique em CAPTURAR (ou tecle F5). A imagem e salva e aparece na previa.
+
+O botao ao lado do CAPTURAR alterna a aquisicao do instrumento: verde
+"Rodando", vermelho "Parado" - a mesma convencao da tecla do painel.
+
+SE NAO ENCONTRAR O INSTRUMENTO
+
+E preciso ter uma implementacao VISA instalada (R&S VISA, Keysight IO
+Libraries ou NI-VISA). Se nao houver nenhuma, o programa avisa e oferece
+instalar. Instale apenas uma: duas disputam o mesmo aparelho.
+
+Se o instrumento nao aparecer mesmo com VISA instalado, o problema
+costuma ser o cabo ou a porta - confira se o Windows o reconhece.
+
+ONDE FICAM AS COISAS
+
+As capturas vao para a pasta escolhida em Destino.
+As preferencias ficam em %USERPROFILE%\\.zagoview.json.
+
+PARA RELATAR UM PROBLEMA
+
+Copie o texto do quadro Registro da janela principal e envie junto. Ele
+diz o que o programa tentou e o que o instrumento respondeu.
+"""
+
 ARQUIVO_CONFIG = os.path.join(os.path.expanduser("~"), ".zagoview.json")
 # Nome antigo, de quando o programa era so do DSO-X: lido uma vez para nao
 # perder as preferencias de quem ja usava.
@@ -749,8 +787,75 @@ def montar_cabecalho(raiz):
              fg=CINZA_TEXTO, font=("Segoe UI", 9)).grid(row=1, column=1,
                                                         sticky="nw", padx=(14, 0))
 
+    tk.Button(faixa, text="Ajuda", width=8, relief="groove", bg="white",
+               font=("Segoe UI", 9), command=lambda: mostrar_ajuda(raiz)
+               ).grid(row=0, column=2, rowspan=2, sticky="e")
+
     tk.Frame(raiz, bg=VERDE, height=3).grid(row=0, column=0, sticky="sew")
     return imagem
+
+
+def mostrar_ajuda(pai):
+    """Janela de ajuda, com o essencial de uso, a autoria e o contato.
+
+    Usa um Text em vez de messagebox para o e-mail poder ser selecionado e
+    copiado - numa caixa de mensagem o texto nao se copia em pedacos.
+    """
+    janela = tk.Toplevel(pai)
+    janela.title(f"Ajuda - {NOME} {VERSAO}")
+    janela.transient(pai)
+    janela.resizable(False, False)
+    with contextlib.suppress(tk.TclError):
+        janela.iconphoto(False, *[tk.PhotoImage(file=c) for c in ICONES[:2]])
+
+    quadro = ttk.Frame(janela, padding=14)
+    quadro.grid(sticky="nsew")
+
+    ttk.Label(quadro, text=f"{NOME} {VERSAO}",
+              font=("Segoe UI", 12, "bold")).grid(row=0, column=0,
+                                                  columnspan=2, sticky="w")
+    ttk.Label(quadro, text=DESCRICAO, foreground=CINZA_TEXTO).grid(
+        row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+    # Com rolagem: o texto cresce quando alguem editar a ajuda, e a caixa
+    # continua do mesmo tamanho em vez de cortar o fim sem avisar.
+    texto = tk.Text(quadro, width=64, height=20, wrap="word", relief="flat",
+                    background=janela.cget("bg"), font=("Segoe UI", 9))
+    texto.grid(row=2, column=0, sticky="nsew")
+    rolagem = ttk.Scrollbar(quadro, orient="vertical", command=texto.yview)
+    rolagem.grid(row=2, column=1, sticky="ns")
+    texto.configure(yscrollcommand=rolagem.set)
+    texto.insert("1.0", AJUDA.strip())
+    texto.configure(state="disabled")      # so leitura, mas ainda selecionavel
+    texto.bind("<MouseWheel>",
+               lambda e: texto.yview_scroll(-e.delta // 120, "units"))
+
+    linha = ttk.Frame(quadro)
+    linha.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+    linha.columnconfigure(0, weight=1)
+    ttk.Label(linha, text=f"{AUTOR}  <{EMAIL}>",
+              foreground=CINZA_TEXTO).grid(row=0, column=0, sticky="w")
+
+    def copiar_email():
+        janela.clipboard_clear()
+        janela.clipboard_append(EMAIL)
+        bt_copiar.configure(text="Copiado!")
+        janela.after(1500, lambda: bt_copiar.configure(text="Copiar e-mail"))
+
+    bt_copiar = ttk.Button(linha, text="Copiar e-mail", width=15,
+                           command=copiar_email)
+    bt_copiar.grid(row=0, column=1, padx=(8, 0))
+    ttk.Button(linha, text="Fechar", width=10,
+               command=janela.destroy).grid(row=0, column=2, padx=(8, 0))
+
+    janela.bind("<Escape>", lambda _e: janela.destroy())
+    janela.update_idletasks()
+    # centraliza sobre a janela principal
+    x = pai.winfo_rootx() + (pai.winfo_width() - janela.winfo_reqwidth()) // 2
+    y = pai.winfo_rooty() + (pai.winfo_height() - janela.winfo_reqheight()) // 3
+    janela.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+    janela.grab_set()
+    return janela
 
 
 def definir_icone(raiz):
@@ -773,7 +878,7 @@ def definir_icone(raiz):
 
 def main():
     raiz = tk.Tk()
-    raiz.title("Zagoview")
+    raiz.title(f"{NOME} {VERSAO}")
     raiz.minsize(700, 760)
     try:
         ttk.Style().theme_use("vista")
