@@ -639,9 +639,10 @@ class Aplicacao(ttk.Frame):
             self._centralizar_aviso()
             return
         largura, altura = imagem.width(), imagem.height()
-        self.cv_previa.create_image(0, 0, anchor="nw", image=imagem)
-        self.cv_previa.configure(scrollregion=(0, 0, largura, altura),
-                                 width=largura, height=altura)
+        self.cv_previa.create_image(0, 0, anchor="n", image=imagem,
+                                    tags="previa")
+        self.cv_previa.configure(width=largura, height=altura)
+        self._centralizar_previa()
         self.cv_previa.yview_moveto(0)
 
     def _ajustar_barra(self, primeiro, ultimo):
@@ -662,6 +663,20 @@ class Aplicacao(ttk.Frame):
             self.cv_previa.coords("aviso",
                                   self.cv_previa.winfo_width() / 2,
                                   self.cv_previa.winfo_height() / 2)
+        self._centralizar_previa()
+
+    def _centralizar_previa(self):
+        """Mantem a imagem no meio quando sobra largura.
+
+        A area rolavel acompanha: sem isso, centralizar a imagem deixaria
+        metade dela fora do alcance da rolagem.
+        """
+        if self.imagem_tk is None or not self.cv_previa.find_withtag("previa"):
+            return
+        largura = max(self.cv_previa.winfo_width(), self.imagem_tk.width())
+        self.cv_previa.coords("previa", largura / 2, 0)
+        self.cv_previa.configure(
+            scrollregion=(0, 0, largura, self.imagem_tk.height()))
 
     def _carregar_previa(self, caminho):
         try:
@@ -764,9 +779,18 @@ def main():
         ttk.Style().theme_use("vista")
     except tk.TclError:
         pass
-    raiz.logo = montar_cabecalho(raiz)
+    # O conteudo vive num corpo de largura natural, centralizado na janela:
+    # maximizar passa a sobrar margem dos dois lados em vez de esticar os
+    # botoes e os campos ate a largura da tela. O "ns" preserva o
+    # comportamento vertical - a previa continua absorvendo o que sobra.
+    corpo = ttk.Frame(raiz)
+    corpo.grid(row=0, column=0, sticky="ns")
+    raiz.columnconfigure(0, weight=1)
+    raiz.rowconfigure(0, weight=1)
+
+    raiz.logo = montar_cabecalho(corpo)
     raiz.icones = definir_icone(raiz)
-    app = Aplicacao(raiz)
+    app = Aplicacao(corpo)
     raiz.protocol("WM_DELETE_WINDOW", app.ao_fechar)
     raiz.mainloop()
 

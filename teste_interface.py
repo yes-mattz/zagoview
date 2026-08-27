@@ -180,9 +180,14 @@ checar("estado esquecido", app.rodando, None)
 print("\n[11] a barra da previa aparece so quando ha o que rolar")
 app._mostrar_previa(destino)
 raiz.update()
-checar("area rolavel cobre a imagem inteira",
-       [int(float(v)) for v in app.cv_previa["scrollregion"].split()],
-       [0, 0, 427, 256])
+# A largura da area rolavel acompanha o canvas, porque a imagem fica
+# centralizada; o que precisa casar com a imagem e a altura.
+_, _, rol_larg, rol_alt = [int(float(v))
+                           for v in app.cv_previa["scrollregion"].split()]
+checar("area rolavel cobre a altura da imagem", rol_alt, 256)
+checar("e nao e mais estreita que a imagem", rol_larg >= 427, True)
+checar("imagem centralizada na largura",
+       app.cv_previa.coords("previa")[0], rol_larg / 2)
 checar("o canvas pede o tamanho da imagem, como o rotulo pedia",
        (app.cv_previa.winfo_reqwidth(), app.cv_previa.winfo_reqheight()),
        (427, 256))

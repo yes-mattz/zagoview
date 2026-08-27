@@ -225,5 +225,9 @@ percorrendo os estados de conexão em uma janela real.
 - Quando a janela fica menor que a prévia, uma barra de rolagem aparece na
   lateral dela. A barra some sozinha quando a imagem cabe inteira: barra
   vertical tem altura mínima própria, e deixá-la sempre visível esticaria a
-  janela em 32 px sem necessidade.
+  janela em 32 px sem necessidade. A imagem fica centralizada quando sobra
+  largura, e a área rolável acompanha.
+- Maximizar a janela **não estica** os botões e os campos: o conteúdo mantém a
+  largura natural (701 px) e fica centralizado, com margem dos dois lados. A
+  altura continua sendo absorvida pela prévia.
 - `--inksaver` inverte o fundo para branco (economia de tinta na impressão).
