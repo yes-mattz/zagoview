@@ -284,9 +284,23 @@ class Aplicacao(ttk.Frame):
         self.rowconfigure(5, weight=1)
         g.columnconfigure(0, weight=1)
         g.rowconfigure(0, weight=1)
-        self.lb_previa = ttk.Label(g, text="(nenhuma captura ainda)",
-                                   anchor="center", foreground="gray")
-        self.lb_previa.grid(row=0, column=0, sticky="nsew")
+        # A imagem vai num canvas so para poder ser rolada. O canvas pede
+        # exatamente o tamanho da imagem, como o rotulo pedia antes, para a
+        # janela continuar com a mesma geometria; a barra so entra em acao
+        # quando a janela encolhe e sobra menos espaco que a imagem.
+        fundo = ttk.Style().lookup("TFrame", "background") or "#f0f0f0"
+        self.cv_previa = tk.Canvas(g, highlightthickness=0, borderwidth=0,
+                                   background=fundo)
+        self.cv_previa.grid(row=0, column=0, sticky="nsew")
+        self.rol_previa = ttk.Scrollbar(g, orient="vertical",
+                                        command=self.cv_previa.yview)
+        self.rol_previa.grid(row=0, column=1, sticky="ns")
+        self.cv_previa.configure(yscrollcommand=self._ajustar_barra)
+        self.cv_previa.bind(
+            "<MouseWheel>",
+            lambda e: self.cv_previa.yview_scroll(-e.delta // 120, "units"))
+        self.cv_previa.bind("<Configure>", lambda _e: self._centralizar_aviso())
+        self._desenhar_previa(None)
 
         # --- Registro ---------------------------------------------------
         g = ttk.LabelFrame(self, text="Registro", padding=6)
@@ -601,12 +615,53 @@ class Aplicacao(ttk.Frame):
             if fator > 1:
                 img = img.subsample(fator)
             self.imagem_tk = img
-            self.lb_previa.configure(image=img, text="")
+            self._desenhar_previa(img)
         except Exception as e:
             self.imagem_tk = None
-            self.lb_previa.configure(image="",
-                                     text="(nao foi possivel exibir a previa)")
+            self._desenhar_previa(None, "(nao foi possivel exibir a previa)")
             self.log(f"Previa indisponivel: {e}")
+
+    def _desenhar_previa(self, imagem, aviso="(nenhuma captura ainda)"):
+        """Poe a imagem no canvas e define o que da para rolar.
+
+        O canvas passa a pedir o tamanho da imagem, que e o que o rotulo pedia
+        antes: assim a janela mantem a mesma altura natural, e a rolagem so
+        existe quando o espaco disponivel fica menor que a imagem.
+        """
+        self.cv_previa.delete("all")
+        if imagem is None:
+            # Sem imagem o canvas pede so uma linha de texto. O tamanho padrao
+            # dele e bem maior e esticaria a janela sem nada para mostrar.
+            self.cv_previa.configure(scrollregion=(0, 0, 0, 0),
+                                     width=1, height=20)
+            self.cv_previa.create_text(0, 0, text=aviso, fill="gray",
+                                       tags="aviso")
+            self._centralizar_aviso()
+            return
+        largura, altura = imagem.width(), imagem.height()
+        self.cv_previa.create_image(0, 0, anchor="nw", image=imagem)
+        self.cv_previa.configure(scrollregion=(0, 0, largura, altura),
+                                 width=largura, height=altura)
+        self.cv_previa.yview_moveto(0)
+
+    def _ajustar_barra(self, primeiro, ultimo):
+        """Mostra a barra so quando ha o que rolar.
+
+        Uma barra vertical tem altura minima propria, maior que a do canvas
+        vazio: deixa-la sempre visivel esticaria a janela em 32 px so para
+        exibir uma barra inutil.
+        """
+        self.rol_previa.set(primeiro, ultimo)
+        if float(primeiro) <= 0.0 and float(ultimo) >= 1.0:
+            self.rol_previa.grid_remove()
+        else:
+            self.rol_previa.grid()
+
+    def _centralizar_aviso(self):
+        if self.cv_previa.find_withtag("aviso"):
+            self.cv_previa.coords("aviso",
+                                  self.cv_previa.winfo_width() / 2,
+                                  self.cv_previa.winfo_height() / 2)
 
     def _carregar_previa(self, caminho):
         try:

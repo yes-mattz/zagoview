@@ -177,5 +177,36 @@ checar("volta a cinza", (app.bt_run["text"], str(app.bt_run["state"])),
        ("Run/Stop", "disabled"))
 checar("estado esquecido", app.rodando, None)
 
+print("\n[11] a barra da previa aparece so quando ha o que rolar")
+app._mostrar_previa(destino)
+raiz.update()
+checar("area rolavel cobre a imagem inteira",
+       [int(float(v)) for v in app.cv_previa["scrollregion"].split()],
+       [0, 0, 427, 256])
+checar("o canvas pede o tamanho da imagem, como o rotulo pedia",
+       (app.cv_previa.winfo_reqwidth(), app.cv_previa.winfo_reqheight()),
+       (427, 256))
+
+# Encolher o canvas de verdade, em vez de chamar o callback na mao: o
+# proprio Tk dispara o yscrollcommand com os valores reais, e e esse caminho
+# que interessa. grid_info() vazio = fora do layout; winfo_ismapped nao
+# serve, porque depende de a janela estar visivel.
+raiz.geometry("700x760")
+for _ in range(20):
+    raiz.update()
+    time.sleep(0.02)
+checar("cortando, com barra", bool(app.rol_previa.grid_info()), True)
+visivel = app.cv_previa.yview()
+checar("so parte da imagem a vista", visivel[1] < 1.0, True)
+
+# Devolver espaco a janela, e nao ao canvas: pedir mais altura de nada
+# adianta se a janela nao tem o que dar.
+raiz.geometry("700x1100")
+for _ in range(20):
+    raiz.update()
+    time.sleep(0.02)
+checar("com espaco de sobra, sem barra", bool(app.rol_previa.grid_info()), False)
+checar("imagem inteira a vista", app.cv_previa.yview(), (0.0, 1.0))
+
 raiz.destroy()
 print("\nTODOS OS TESTES PASSARAM")
