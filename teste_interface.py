@@ -165,6 +165,13 @@ checar("CAPTURAR bloqueado", str(app.bt_capturar["state"]), "disabled")
 
 print("\n[9] o botao Run/Stop mostra o estado pela cor")
 app._marcar_conectado("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY5528,07.30")
+bombear()          # conectar dispara a leitura do estado; deixa terminar
+
+# Estado desconhecido: verificado pintando direto, e nao no intervalo entre
+# conectar e a resposta chegar - esse intervalo e uma corrida, e a asserção
+# passava ou falhava conforme a velocidade da maquina.
+app.rodando = None
+app._pintar_run()
 raiz.update()
 checar("desconhecido: cinza e travado", (app.bt_run["text"],
        str(app.bt_run["state"])), ("Run/Stop", "disabled"))
