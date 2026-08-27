@@ -16,6 +16,7 @@ Verificado contra um Keysight DSO-X 3024T e um Rigol DSA832E.
 | `teste_interface.py` | Teste da interface sem precisar do instrumento |
 | `assets/` | Logo e ícones: SVG (vetor), PNG (janela) e `.ico` (executável) |
 | `zagoview.spec` | Receita do PyInstaller para gerar o executável |
+| `diagnostico.ps1` | Relatório de diagnóstico para suporte remoto |
 
 ## Identidade visual
 
@@ -204,6 +205,20 @@ campo for o mesmo que respondeu ao `*IDN?`. Editar o endereço, perder a conexã
 durante uma captura ou não achar nada na varredura devolve a tela para "não
 conectado" e limpa o campo — assim ele nunca mostra um instrumento que não
 está mais lá.
+
+## Quando não funciona na máquina de outra pessoa
+
+```bash
+powershell -ExecutionPolicy Bypass -File diagnostico.ps1
+```
+
+Gera um `.txt` na Área de Trabalho com o que o Windows e o VISA enxergam
+naquela máquina: instrumentos USB presentes e com defeito, portas COM e o que
+está atrás delas, implementações VISA instaladas, a lista de recursos do VISA
+com o `*IDN?` de cada um, uma sondagem serial (cinco velocidades × dois fins de
+linha) e o hash do `Zagoview.exe` usado.
+
+Não precisa de Python nem de administrador, e só lê — não altera nada.
 
 ## Testes
 
