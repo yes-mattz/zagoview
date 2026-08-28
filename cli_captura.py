@@ -78,9 +78,13 @@ def main():
 
     try:
         recurso = args.recurso or escolher_instrumento()
-        print(f"Conectado: {instrumento.identificar(recurso)}")
+        idn = instrumento.identificar(recurso)
+        print(f"Conectado: {idn}")
+        # O idn ja confirmado segue adiante: perguntar de novo na captura e
+        # uma ida e volta a mais que, fora de sincronia, escolhe o dialeto
+        # errado e manda comando que o aparelho nao entende.
         destino, tamanho = instrumento.capturar(
-            recurso, args.arquivo, args.formato, paleta, args.inksaver)
+            recurso, args.arquivo, args.formato, paleta, args.inksaver, idn=idn)
         print(f"Imagem salva em: {destino}  ({tamanho} bytes)")
     except RuntimeError as e:
         print(f"\nERRO: {e}")

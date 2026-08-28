@@ -173,6 +173,11 @@ def achar_instalador_visa():
 
 def texto_do_erro(e):
     """Traduz as falhas mais comuns para uma mensagem util ao operador."""
+    if isinstance(e, instrumento.RespostaInvalida):
+        return (f"{e}\n\n"
+                "Costuma ser sessao fora de sincronia ou comando que este "
+                "modelo nao entende. Clique em Procurar para refazer a "
+                "conexao; se repetir, envie o Registro para o suporte.")
     if isinstance(e, pyvisa.errors.VisaIOError):
         return ("Falha de comunicacao VISA:\n"
                 f"{e}\n\n"
@@ -201,6 +206,7 @@ class Aplicacao(ttk.Frame):
         self.ultimo_arquivo = None
         self.imagem_tk = None
         self.rodando = None        # None ate saber o estado do instrumento
+        self.idn = None            # o *IDN? confirmado na conexao
 
         self.var_recurso = tk.StringVar(
             value=cfg.get("recurso", instrumento.RECURSO_PADRAO))
@@ -393,15 +399,22 @@ class Aplicacao(ttk.Frame):
 
     def _marcar_conectado(self, idn):
         self.conectado = True
+        # Guardado para as operacoes seguintes: perguntar o *IDN? de novo a
+        # cada captura e uma ida e volta a mais que, se voltar fora de
+        # sincronia, escolhe o dialeto errado.
+        self.idn = idn
         self.lb_idn.configure(text=idn, foreground="green")
         self._atualizar_estado_captura()
         recurso = self.var_recurso.get().strip()
-        self._executar(lambda: instrumento.estado_aquisicao(recurso), "estado",
+        idn = self.idn
+        self._executar(lambda: instrumento.estado_aquisicao(recurso, idn=idn),
+                       "estado",
                        "Lendo o estado da aquisicao...")
 
     def _marcar_desconectado(self, texto="Nao conectado.", vermelho=False):
         self.conectado = False
         self.rodando = None
+        self.idn = None
         self._pintar_run()
         self.lb_idn.configure(text=texto, foreground="red" if vermelho else "gray")
         self._atualizar_estado_captura()
@@ -500,7 +513,9 @@ class Aplicacao(ttk.Frame):
             return
         recurso = self.var_recurso.get().strip()
         rodando = self.rodando
-        self._executar(lambda: instrumento.run_stop(recurso, rodando), "run",
+        idn = self.idn
+        self._executar(lambda: instrumento.run_stop(recurso, rodando, idn=idn),
+                       "run",
                        "Parando a aquisicao..." if rodando
                        else "Retomando a aquisicao...")
 
@@ -613,7 +628,8 @@ class Aplicacao(ttk.Frame):
                                             self.var_prefixo.get() or "tela",
                                             formato)
         self._executar(
-            lambda: instrumento.capturar(recurso, destino, formato, paleta, inksaver),
+            lambda: instrumento.capturar(recurso, destino, formato, paleta,
+                                         inksaver, idn=self.idn),
             "captura", "Executando...")
 
     def _fim_captura(self, ok, dados):

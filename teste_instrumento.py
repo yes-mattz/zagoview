@@ -184,6 +184,40 @@ checar("Keysight nao sabe informar", instrumento.estado_aquisicao("key"), None)
 checar("e nem chega a perguntar",
        [c for c in KEYSIGHT.comandos if "CONT" in c or "RSTate" in c], [])
 
+print("\n[7c] o idn ja confirmado evita perguntar de novo")
+# Foi o segundo *IDN?, dentro da captura, que voltou fora de sincronia num
+# Rigol DHO804: o programa classificou o osciloscopio como Keysight e mandou
+# :HARDcopy:INKSaver, que o aparelho devolveu como eco.
+DHO.comandos.clear()
+instrumento.capturar_bytes("dho", "PNG", "COLor",
+                           idn="Rigol Technologies,DHO814,DHO8A25,00.01")
+checar("nao perguntou o *IDN? de novo",
+       [c for c in DHO.comandos if "IDN" in c], [])
+checar("e usou o dialeto certo", DHO.comandos[-1], ":DISPlay:DATA? PNG")
+
+DHO.comandos.clear()
+instrumento.capturar_bytes("dho", "PNG", "COLor")
+checar("sem idn, pergunta", [c for c in DHO.comandos if "IDN" in c], ["*IDN?"])
+
+print("\n[7d] resposta fora de sincronia falha em vez de chutar Keysight")
+for ruim in ("", ":HARDcopy:INKSaver OFF", "*IDN?", "lixo"):
+    checar(f"{ruim[:24]!r:<28} nao serve como idn",
+           instrumento.idn_utilizavel(ruim), False)
+checar("um *IDN? de verdade serve",
+       instrumento.idn_utilizavel("Rigol Technologies,DHO814,DHO8A25,00.01"),
+       True)
+
+ECO = FalsoScope(":HARDcopy:INKSaver OFF")     # devolve o eco do comando
+ECO.binario = b"BM" + b"0" * 40
+simular({"eco": ECO})
+try:
+    instrumento.capturar_bytes("eco", "PNG", "COLor")
+    checar("deveria ter falhado", True, False)
+except instrumento.RespostaInvalida as e:
+    checar("vira RespostaInvalida", "nao respondeu ao *IDN?" in str(e), True)
+checar("e nenhum comando de dialeto foi enviado",
+       [c for c in ECO.comandos if "INKSaver" in c or "DISPlay" in c], [])
+
 print("\n[8] a extensao segue o que o aparelho entregou, nao o que foi pedido")
 checar("BMP salvo como .png vira .bmp",
        instrumento.ajustar_extensao(r"C:\medidas\tela.png", b"BM" + b"0" * 40),

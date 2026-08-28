@@ -75,6 +75,14 @@ DHO800 vem do manual de programação e ainda não foi testado no aparelho.
 Fabricantes não reconhecidos usam o dialeto Keysight, que pode ou não
 funcionar — Tektronix, por exemplo, usa outra sequência e não é suportado.
 
+O `*IDN?` é perguntado uma vez, ao conectar, e esse mesmo valor acompanha a
+captura e o Run/Stop. Perguntar de novo a cada operação custava uma ida e
+volta que, com a sessão fora de sincronia, devolvia a resposta da rodada
+anterior — foi assim que um DHO804 foi classificado como Keysight e recebeu
+um comando que não entende. Quando a resposta não é reconhecível, nenhum
+comando de dialeto é enviado: a operação falha com mensagem clara em vez de
+sujar a sessão.
+
 O formato escolhido na janela é uma preferência: quando o aparelho não sabe
 produzi-lo, vale o que ele entrega, e a extensão do arquivo é corrigida pela
 assinatura dos bytes.

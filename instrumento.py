@@ -119,6 +119,15 @@ _trava = threading.RLock()
 _gerenciador = None
 
 
+class RespostaInvalida(RuntimeError):
+    """O instrumento respondeu algo que nao da para interpretar.
+
+    Acontece quando a sessao sai de sincronia e cada leitura devolve a
+    resposta da rodada anterior - foi assim que um Rigol DHO804 recebeu um
+    comando do dialeto Keysight e devolveu o eco dele.
+    """
+
+
 class VisaAusente(RuntimeError):
     """Nao ha implementacao VISA utilizavel nesta maquina.
 
@@ -291,23 +300,47 @@ def identificar(recurso, timeout=5000):
     return _com_retentativa(consulta)
 
 
-def run_stop(recurso, rodando, timeout=5000):
+def idn_utilizavel(idn):
+    """Diz se a resposta parece mesmo um *IDN?.
+
+    O formato e "FABRICANTE,MODELO,SERIE,FIRMWARE". Quando a sessao esta
+    dessincronizada, a leitura devolve o eco do comando anterior em vez da
+    resposta - e ai escolher dialeto pelo conteudo seria pior que nao
+    escolher: cairia no padrao Keysight, o unico que escreve um comando a
+    mais antes de ler, sujando a sessao ainda mais.
+    """
+    return bool(idn) and idn.count(",") >= 2
+
+
+def _dialeto_de(scope, idn):
+    """Escolhe o dialeto a partir do idn ja conhecido, ou perguntando."""
+    if not idn:
+        idn = scope.query("*IDN?").strip()
+    if not idn_utilizavel(idn):
+        raise RespostaInvalida(
+            "O instrumento nao respondeu ao *IDN? de forma reconhecivel.\n"
+            f"Veio: {idn[:120]!r}")
+    return DIALETOS[familia(idn)]
+
+
+def run_stop(recurso, rodando, timeout=5000, idn=None):
     """Alterna a aquisicao e devolve o novo estado.
 
-    O comando muda com o fabricante: o Keysight usa :RUN/:STOP, e o Rigol da
+    O comando muda com o aparelho: o Keysight usa :RUN/:STOP, e o Rigol da
     serie DSA800 nao tem :RUN - a aquisicao dele liga e desliga por
-    :INITiate:CONTinuous.
+    :INITiate:CONTinuous. Passe o idn ja confirmado na conexao para evitar
+    uma consulta a mais.
     """
     def acao():
         with sessao(recurso, timeout) as scope:
-            aquisicao = DIALETOS[familia(scope.query("*IDN?").strip())]["aquisicao"]
+            aquisicao = _dialeto_de(scope, idn)["aquisicao"]
             scope.write(aquisicao["parar"] if rodando else aquisicao["rodar"])
         return not rodando
 
     return _com_retentativa(acao)
 
 
-def estado_aquisicao(recurso, timeout=3000):
+def estado_aquisicao(recurso, timeout=3000, idn=None):
     """Pergunta ao instrumento se esta adquirindo. None = ele nao sabe dizer.
 
     Nem todo aparelho responde: no DSO-X 3024T com firmware 04.06.2015 o
@@ -317,7 +350,7 @@ def estado_aquisicao(recurso, timeout=3000):
     """
     def consulta():
         with sessao(recurso, timeout) as scope:
-            pergunta = DIALETOS[familia(scope.query("*IDN?").strip())]["aquisicao"]
+            pergunta = _dialeto_de(scope, idn)["aquisicao"]
             if not pergunta["consulta"]:
                 return None
             resposta = scope.query(pergunta["consulta"]).strip().upper()
@@ -365,25 +398,34 @@ def formato_dos_dados(dados):
 
 
 def capturar_bytes(recurso, formato="PNG", paleta="COLor", inksaver=False,
-                   timeout=20000):
+                   timeout=20000, idn=None):
     """Le a imagem da tela do instrumento e devolve os bytes brutos.
 
     O formato pedido e apenas uma preferencia: se o aparelho nao souber
     produzi-lo, vale o primeiro que ele aceita.
+
+    Passe o idn ja confirmado na conexao. Sem ele, esta funcao pergunta de
+    novo, e uma resposta fora de sincronia levaria ao dialeto errado.
     """
     def leitura():
         with sessao(recurso, timeout) as scope:
-            dialeto = DIALETOS[familia(scope.query("*IDN?").strip())]
+            dialeto = _dialeto_de(scope, idn)
             escolhido = (formato if formato in dialeto["formatos"]
                          else dialeto["formatos"][0])
             if dialeto["inksaver"]:
                 # INKSaver ON inverte o fundo para branco (economia de tinta).
                 scope.write(f":HARDcopy:INKSaver {'ON' if inksaver else 'OFF'}")
-            return scope.query_binary_values(
-                dialeto["comando"](escolhido, paleta),
-                datatype="B",
-                container=bytes,
-            )
+            comando = dialeto["comando"](escolhido, paleta)
+            try:
+                return scope.query_binary_values(comando, datatype="B",
+                                                 container=bytes)
+            except ValueError as e:
+                # O pyvisa reclama do bloco sem o "#" inicial. A mensagem dele
+                # nao diz o que foi pedido, e e justamente isso que importa:
+                # bloco ausente costuma significar comando nao entendido.
+                raise RespostaInvalida(
+                    f"O instrumento nao devolveu imagem para {comando}.\n"
+                    f"{e}") from e
 
     return _com_retentativa(leitura)
 
@@ -420,7 +462,7 @@ def ajustar_extensao(arquivo, dados):
 
 
 def capturar(recurso, arquivo, formato="PNG", paleta="COLor", inksaver=False,
-             timeout=20000):
+             timeout=20000, idn=None):
     """Captura e salva em disco. Devolve (caminho, tamanho_em_bytes)."""
-    dados = capturar_bytes(recurso, formato, paleta, inksaver, timeout)
+    dados = capturar_bytes(recurso, formato, paleta, inksaver, timeout, idn)
     return salvar(dados, ajustar_extensao(arquivo, dados)), len(dados)

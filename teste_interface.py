@@ -205,6 +205,36 @@ checar("volta a cinza", (app.bt_run["text"], str(app.bt_run["state"])),
        ("Run/Stop", "disabled"))
 checar("estado esquecido", app.rodando, None)
 
+print("\n[10b] o *IDN? confirmado acompanha as operacoes seguintes")
+# Perguntar o *IDN? de novo dentro da captura foi o que quebrou um Rigol
+# DHO804: a segunda resposta veio fora de sincronia, o dialeto saiu Keysight
+# e o aparelho recebeu :HARDcopy:INKSaver, que nao entende.
+recebidos = []
+G.instrumento.capturar = lambda *a, **k: (recebidos.append(k.get("idn")),
+                                          (destino, 123456))[1]
+G.instrumento.run_stop = lambda *a, **k: (recebidos.append(k.get("idn")),
+                                          True)[1]
+G.instrumento.estado_aquisicao = lambda *a, **k: (recebidos.append(k.get("idn")),
+                                                  None)[1]
+
+IDN = "Rigol Technologies,DHO814,DHO8A253801426,00.01.02"
+app._marcar_conectado(IDN)
+bombear()          # conectar dispara a leitura do estado
+checar("guardado na conexao", app.idn, IDN)
+checar("estado_aquisicao recebeu o idn", recebidos, [IDN])
+
+app.alternar_run()
+bombear()
+checar("run_stop recebeu o idn", recebidos[-1], IDN)
+
+app.capturar()
+bombear()
+checar("capturar recebeu o idn", recebidos[-1], IDN)
+
+app._marcar_desconectado("Dispositivo desconectado.", vermelho=True)
+raiz.update()
+checar("desconectar esquece o idn", app.idn, None)
+
 print("\n[11] a barra da previa aparece so quando ha o que rolar")
 app._mostrar_previa(destino)
 raiz.update()
