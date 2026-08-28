@@ -79,8 +79,9 @@ O formato escolhido na janela é uma preferência: quando o aparelho não sabe
 produzi-lo, vale o que ele entrega, e a extensão do arquivo é corrigida pela
 assinatura dos bytes.
 
-Para acrescentar um fabricante, basta uma entrada em `DIALETOS` e outra em
-`FABRICANTES`, em `instrumento.py`.
+Para acrescentar um aparelho, basta uma entrada em `DIALETOS` e uma regra em
+`REGRAS_DE_DIALETO`, em `instrumento.py`. As regras casam por fabricante e por
+padrão de modelo, e a primeira que servir vence — as mais específicas primeiro.
 
 ## Gerar o executável
 
