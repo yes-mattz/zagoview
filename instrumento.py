@@ -23,6 +23,7 @@ recebem um erro tipico de dispositivo removido.
 import contextlib
 import datetime
 import os
+import re
 import threading
 
 import pyvisa
@@ -35,7 +36,7 @@ from pyvisa import constants
 RECURSO_PADRAO = ""
 
 FORMATOS = ["PNG", "BMP", "BMP8bit"]
-EXTENSAO = {"PNG": ".png", "BMP": ".bmp", "BMP8bit": ".bmp"}
+EXTENSAO = {"PNG": ".png", "BMP": ".bmp", "BMP8bit": ".bmp", "JPG": ".jpg"}
 
 # Cada fabricante entrega a tela de um jeito. Os comandos abaixo foram
 # verificados contra os aparelhos, nao deduzidos do manual:
@@ -57,23 +58,43 @@ DIALETOS = {
         # muda entre rodando e parado. Por isso a consulta fica vazia.
         "aquisicao": {"rodar": ":RUN", "parar": ":STOP", "consulta": None},
     },
-    "rigol": {
+    # Analisadores de espectro da serie DSA800.
+    "rigol-dsa": {
         "formatos": ["BMP"],
         "inksaver": False,
         "comando": lambda formato, paleta: ":PRIV:SNAP? BMP",
         # A serie DSA800 nao tem :RUN; a aquisicao liga e desliga pelo
         # :INITiate:CONTinuous, que ainda por cima sabe informar o estado.
-        # Conferido no manual de programacao; falta testar no aparelho.
         "aquisicao": {"rodar": ":INITiate:CONTinuous ON",
                       "parar": ":INITiate:CONTinuous OFF",
                       "consulta": ":INITiate:CONTinuous?"},
     },
+    # Osciloscopios DHO800/DHO900. Nao falam a mesma lingua dos analisadores:
+    # aqui o comando e documentado, aceita PNG e devolve bloco com cabecalho
+    # TMC (#9...), o mesmo formato que ja lemos.
+    "rigol-dho": {
+        "formatos": ["PNG", "BMP", "JPG"],
+        "inksaver": False,
+        "comando": lambda formato, paleta: f":DISPlay:DATA? {formato}",
+        "aquisicao": {"rodar": ":RUN", "parar": ":STOP",
+                      "consulta": ":TRIGger:STATus?"},
+    },
 }
-# Agilent e o nome antigo da Keysight, e os aparelhos falam o mesmo dialeto.
-FABRICANTES = {
-    "keysight": ("keysight", "agilent", "hewlett"),
-    "rigol": ("rigol",),
-}
+
+# So o fabricante nao basta para escolher o dialeto: a Rigol tem familias que
+# nao falam a mesma lingua. A primeira regra que servir vence, e as mais
+# especificas vem antes.
+REGRAS_DE_DIALETO = (
+    # (marcas no fabricante, padrao do modelo, dialeto)
+    (("rigol",), r"DSA", "rigol-dsa"),
+    (("rigol",), r"DHO", "rigol-dho"),
+    # Outros Rigol caem no dialeto dos osciloscopios: o :DISPlay:DATA? e
+    # documentado e comum a varias linhas, enquanto o :PRIV:SNAP? nao esta em
+    # manual nenhum. Nao verificado fora do DHO800.
+    (("rigol",), None, "rigol-dho"),
+    # Agilent e o nome antigo da Keysight, e os aparelhos falam o mesmo dialeto.
+    (("keysight", "agilent", "hewlett"), None, "keysight"),
+)
 DIALETO_PADRAO = "keysight"
 
 PASTA_PADRAO = os.path.join(os.path.expanduser("~"), "Capturas_DSOX")
@@ -238,15 +259,24 @@ def responde(recurso, timeout=2000, tentativas=2):
     return False
 
 
-def listar_recursos(reenumerar=False, validar=True):
+def listar_recursos(reenumerar=False, validar=True, incluir_seriais=False):
     """Lista os instrumentos VISA presentes.
 
     Com validar=True devolve so os que respondem: o VISA pode continuar
     anunciando um endereco de aparelho ja desligado ou desconectado.
+
+    Portas seriais (ASRL) ficam de fora por padrao. O VISA lista toda porta
+    COM da maquina, tenha ou nao instrumento do outro lado, e sondar cada uma
+    custa caro: num notebook com Bluetooth ativo apareceram quatro portas, e
+    todas travaram - duas no tempo de escrita, duas sem nem abrir. Como esta
+    sessao tambem nao configura velocidade nem terminacao, um instrumento
+    serial de verdade nao funcionaria; sondar ASRL hoje e so custo.
     """
     if reenumerar:
         reiniciar()
     achados = _com_retentativa(lambda: list(gerenciador().list_resources()))
+    if not incluir_seriais:
+        achados = [r for r in achados if not r.upper().startswith("ASRL")]
     if not validar:
         return achados
     return [r for r in achados if responde(r)]
@@ -291,7 +321,9 @@ def estado_aquisicao(recurso, timeout=3000):
             if not pergunta["consulta"]:
                 return None
             resposta = scope.query(pergunta["consulta"]).strip().upper()
-            if resposta in ("1", "+1", "ON", "RUN"):
+            # O :TRIGger:STATus? do DHO800 responde TD, WAIT, RUN ou AUTO
+            # enquanto adquire, e STOP quando parado.
+            if resposta in ("1", "+1", "ON", "RUN", "TD", "WAIT", "AUTO"):
                 return True
             if resposta in ("0", "+0", "OFF", "STOP"):
                 return False
@@ -304,11 +336,20 @@ def estado_aquisicao(recurso, timeout=3000):
 
 
 def familia(idn):
-    """Descobre o dialeto a partir do fabricante declarado no *IDN?."""
-    fabricante = idn.split(",")[0].strip().lower()
-    for chave, apelidos in FABRICANTES.items():
-        if any(a in fabricante for a in apelidos):
-            return chave
+    """Escolhe o dialeto pelo fabricante e pelo modelo declarados no *IDN?.
+
+    O *IDN? vem como "FABRICANTE,MODELO,SERIE,FIRMWARE". O modelo entra na
+    decisao porque um mesmo fabricante pode ter linhas incompativeis: no
+    Rigol, o DSA800 captura com :PRIV:SNAP? e o DHO800 com :DISPlay:DATA?.
+    """
+    campos = [c.strip() for c in idn.split(",")]
+    fabricante = campos[0].lower() if campos else ""
+    modelo = campos[1].upper() if len(campos) > 1 else ""
+    for marcas, padrao, dialeto in REGRAS_DE_DIALETO:
+        if not any(m in fabricante for m in marcas):
+            continue
+        if padrao is None or re.search(padrao, modelo):
+            return dialeto
     return DIALETO_PADRAO
 
 
@@ -318,6 +359,8 @@ def formato_dos_dados(dados):
         return "PNG"
     if dados[:2] == b"BM":
         return "BMP"
+    if dados[:3] == bytes((0xFF, 0xD8, 0xFF)):
+        return "JPG"
     return None
 
 

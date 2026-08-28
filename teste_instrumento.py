@@ -76,22 +76,42 @@ checar("nenhum viClear durante a varredura",
        [r for r, limpar in limpezas if limpar], [])
 
 print("\n[3] listar_recursos filtra os que nao respondem")
+SERIAL = "ASRL4::INSTR"
 instrumento.gerenciador = lambda: type("RM", (), {
-    "list_resources": staticmethod(lambda: (VIVO, FANTASMA, OCUPADO))})()
+    "list_resources": staticmethod(
+        lambda: (VIVO, FANTASMA, OCUPADO, SERIAL))})()
 checar("so os presentes", instrumento.listar_recursos(validar=True),
        [VIVO, OCUPADO])
 checar("sem validar, lista crua", instrumento.listar_recursos(validar=False),
        [VIVO, FANTASMA, OCUPADO])
 
-print("\n[4] o dialeto sai do fabricante declarado no *IDN?")
+print("\n[3b] portas seriais ficam de fora, e nem sao sondadas")
+# Sondar ASRL custa caro e nao serve: numa maquina com Bluetooth aparecem
+# varias portas, todas travando. Como a sessao nao configura velocidade nem
+# terminacao, instrumento serial tambem nao funcionaria.
+sondados = simular({VIVO: FalsoScope("KEYSIGHT,DSO-X,MY5528,07.30"),
+                    FANTASMA: erro(constants.StatusCode.error_resource_not_found),
+                    OCUPADO: erro(constants.StatusCode.error_resource_busy),
+                    SERIAL: erro(constants.StatusCode.error_timeout)})
+instrumento.listar_recursos(validar=True)
+checar("nenhuma sessao aberta em ASRL",
+       [r for r, _ in sondados if r.startswith("ASRL")], [])
+checar("com incluir_seriais, a porta volta a lista",
+       instrumento.listar_recursos(validar=False, incluir_seriais=True),
+       [VIVO, FANTASMA, OCUPADO, SERIAL])
+
+print("\n[4] o dialeto sai do fabricante E do modelo")
 for idn, esperado in [
     ("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY55280502,07.30", "keysight"),
     ("Agilent Technologies,DSO-X 2002A,MY123,02.40", "keysight"),
-    ("Rigol Technologies,DSA832E,DSA8G225200243,00.01.04.00.00", "rigol"),
-    ("RIGOL TECHNOLOGIES,DS1104Z,DS1ZA1,00.04.04", "rigol"),
+    # A Rigol tem familias incompativeis: analisador e osciloscopio nao
+    # capturam com o mesmo comando.
+    ("Rigol Technologies,DSA832E,DSA8G225200243,00.01.04.00.00", "rigol-dsa"),
+    ("Rigol Technologies,DHO814,DHO8A253801426,00.01.02", "rigol-dho"),
+    ("RIGOL TECHNOLOGIES,DS1104Z,DS1ZA1,00.04.04", "rigol-dho"),
     ("Tektronix,TDS2024C,C000000,CF:91.1CT", "keysight"),   # cai no padrao
 ]:
-    checar(f"{idn.split(',')[0][:22]:<22}", instrumento.familia(idn), esperado)
+    checar(f"{idn.split(',')[1]:<12}", instrumento.familia(idn), esperado)
 
 print("\n[5] cada aparelho recebe o comando que entende")
 KEYSIGHT = FalsoScope("KEYSIGHT TECHNOLOGIES,DSO-X 3024T,MY5528,07.30")
@@ -114,10 +134,30 @@ checar("INKSaver so na Keysight", ":HARDcopy:INKSaver ON" in KEYSIGHT.comandos, 
 checar("assinatura reconhecida", instrumento.formato_dos_dados(dados), "PNG")
 
 dados = instrumento.capturar_bytes("rig", "PNG", "COLor", inksaver=True)
-checar("comando Rigol", RIGOL.comandos[-1], ":PRIV:SNAP? BMP")
+checar("comando Rigol DSA", RIGOL.comandos[-1], ":PRIV:SNAP? BMP")
 checar("pedir PNG a um Rigol nao manda INKSaver",
        [c for c in RIGOL.comandos if "INKSaver" in c], [])
 checar("assinatura reconhecida", instrumento.formato_dos_dados(dados), "BMP")
+
+# O osciloscopio da Rigol nao entende o comando do analisador: pede a tela
+# com :DISPlay:DATA?, sem o argumento de paleta que a Keysight exige.
+DHO = FalsoScope("Rigol Technologies,DHO814,DHO8A253801426,00.01.02")
+DHO.binario = bytes((0xFF, 0xD8, 0xFF)) + b"0" * 40
+simular({"key": KEYSIGHT, "rig": RIGOL, "dho": DHO})
+dados = instrumento.capturar_bytes("dho", "PNG", "COLor")
+checar("comando Rigol DHO", DHO.comandos[-1], ":DISPlay:DATA? PNG")
+checar("sem argumento de paleta", "COLor" in DHO.comandos[-1], False)
+checar("assinatura JPEG reconhecida",
+       instrumento.formato_dos_dados(dados), "JPG")
+checar("e ganha a extensao certa",
+       instrumento.ajustar_extensao(r"C:\m\tela.png", dados), r"C:\m\tela.jpg")
+
+instrumento.run_stop("dho", False)
+checar("DHO roda com :RUN", DHO.comandos[-1], ":RUN")
+DHO.respostas[":TRIGger:STATus?"] = "TD"
+checar("TD conta como rodando", instrumento.estado_aquisicao("dho"), True)
+DHO.respostas[":TRIGger:STATus?"] = "STOP"
+checar("STOP conta como parado", instrumento.estado_aquisicao("dho"), False)
 
 print("\n[7] Run/Stop usa o comando de cada fabricante")
 checar("novo estado apos RUN", instrumento.run_stop("key", False), True)

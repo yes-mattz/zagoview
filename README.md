@@ -60,14 +60,20 @@ Sem argumentos, encontra o instrumento e salva com nome automático. Opções:
 
 ## Instrumentos suportados
 
-| Fabricante | Captura | Aquisição |
+| Aparelho | Captura | Aquisição |
 |---|---|---|
-| Keysight / Agilent | `:DISPlay:DATA?` — PNG, BMP, BMP8bit | `:RUN` / `:STOP` |
-| Rigol | `:PRIV:SNAP?` — BMP | `:INITiate:CONTinuous ON\|OFF` |
+| Keysight / Agilent | `:DISPlay:DATA? <fmt>,<paleta>` — PNG, BMP, BMP8bit | `:RUN` / `:STOP` |
+| Rigol DSA800 (analisadores) | `:PRIV:SNAP? BMP` — BMP | `:INITiate:CONTinuous ON\|OFF` |
+| Rigol DHO800/900 (osciloscópios) | `:DISPlay:DATA? <fmt>` — PNG, BMP, JPG | `:RUN` / `:STOP` |
 
-Verificado em um Keysight DSO-X 3024T e em um Rigol DSA832E. Fabricantes não
-reconhecidos usam o dialeto Keysight, que pode ou não funcionar — Tektronix,
-por exemplo, usa outra sequência e ainda não é suportado.
+O dialeto é escolhido pelo **fabricante e pelo modelo**, porque um mesmo
+fabricante pode ter linhas incompatíveis: no Rigol, o analisador DSA800 e o
+osciloscópio DHO800 não capturam com o mesmo comando.
+
+Verificado em um Keysight DSO-X 3024T e em um Rigol DSA832E. O dialeto do
+DHO800 vem do manual de programação e ainda não foi testado no aparelho.
+Fabricantes não reconhecidos usam o dialeto Keysight, que pode ou não
+funcionar — Tektronix, por exemplo, usa outra sequência e não é suportado.
 
 O formato escolhido na janela é uma preferência: quando o aparelho não sabe
 produzi-lo, vale o que ele entrega, e a extensão do arquivo é corrigida pela
@@ -104,6 +110,11 @@ Se não aparecer aqui, o problema é físico — cabo, porta ou o próprio apare
 
 **A conexão caiu depois de trocar o cabo.** O botão **Procurar** descarta a
 sessão VISA e refaz a varredura, sem precisar fechar o programa.
+
+**Instrumento ligado por cabo serial.** Não é suportado. A varredura ignora
+portas COM (`ASRL`) de propósito: o VISA lista todas as portas da máquina,
+tenha ou não instrumento atrás, e sondá-las trava — num notebook com Bluetooth
+apareceram quatro portas, todas sem resposta.
 
 **Falhou na máquina de outra pessoa.** O script de diagnóstico levanta o que o
 Windows e o VISA enxergam naquela máquina e gera um relatório para análise:
